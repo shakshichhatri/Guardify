@@ -235,12 +235,21 @@
             </p>
             
             <div class="cta-buttons">
-                <a href="https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&scope=bot&permissions=1099780063238" class="btn btn-primary pulse">
-                    Add to Discord
+                {% if user %}
+                <a href="/guilds" class="btn btn-primary pulse">
+                    View My Servers
                 </a>
-                <a href="/dashboard.html" class="btn btn-secondary">
-                    View Dashboard
+                <a href="/logout" class="btn btn-secondary">
+                    Logout ({{ user.username }})
                 </a>
+                {% else %}
+                <a href="/login" class="btn btn-primary pulse">
+                    Login with Discord
+                </a>
+                <a href="https://discord.com/api/oauth2/authorize?client_id=1458798335178707036&permissions=1099780063238&scope=bot%20applications.commands" class="btn btn-secondary" target="_blank">
+                    Add to Server
+                </a>
+                {% endif %}
             </div>
         </div>
 

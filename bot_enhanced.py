@@ -1,6 +1,10 @@
 """
-Guardify - Advanced Discord Moderation Bot
-AI-enabled bot with comprehensive moderation features and user-friendly interface
+Guardify - AI-Enabled Social Media Forensics Investigation
+Detecting and Preventing Digital Abuse through Advanced AI Moderation
+
+Project: AI-Enabled Social Media Forensics Investigation for Detecting and Preventing Digital Abuse
+Purpose: Empowers users to collect evidence, detect harmful content, and prevent escalation
+         through AI-powered analysis and comprehensive forensics logging.
 """
 
 import discord
@@ -8,18 +12,29 @@ from discord.ext import commands
 from discord import app_commands
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from textblob import TextBlob
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+import hashlib
+import pandas as pd
 import re
 from typing import Dict, List, Optional
 import asyncio
 from collections import defaultdict
+import csv
 
 
 class AbuseDetector:
-    """Advanced abuse detection with ML-based sentiment analysis."""
+    """
+    AI-Powered Abuse Detection System
+    
+    Uses dual sentiment analysis (TextBlob + VADER) for improved accuracy
+    in detecting harmful content, cyberbullying, and online harassment.
+    Implements forensics-grade evidence collection methodology.
+    """
     
     SENTIMENT_THRESHOLD = -0.3
+    VADER_THRESHOLD = -0.5
     KEYWORD_WEIGHT = 0.4
     ABUSE_SCORE_THRESHOLD = 0.4
     
@@ -28,43 +43,97 @@ class AbuseDetector:
             'hate', 'kill', 'stupid', 'idiot', 'loser', 'trash',
             'worthless', 'pathetic', 'disgusting', 'die', 'kys',
             'retard', 'moron', 'dumb', 'ugly', 'fat', 'nazi',
-            'fuck', 'shit', 'bitch', 'ass', 'damn'
+            'fuck', 'shit', 'bitch', 'ass', 'damn', 'suicide',
+            'hurt yourself', 'nobody likes you', 'waste of space'
         ]
         self.spam_tracker = defaultdict(list)
+        self.vader = SentimentIntensityAnalyzer()
+        
+        # Prevention tips database
+        self.prevention_tips = {
+            'high': [
+                "🚨 Severe abuse detected. Document evidence and contact authorities if needed.",
+                "⚠️ High-risk content identified. Consider implementing cooling-off period.",
+                "📞 Critical situation. Reach out to mental health resources if affected."
+            ],
+            'medium': [
+                "⚠️ Potentially harmful language detected. Monitor situation closely.",
+                "📋 Recommend reviewing community guidelines with involved parties.",
+                "🛡️ Enable auto-moderation to prevent escalation."
+            ],
+            'low': [
+                "💡 Mild concern detected. Consider gentle reminder about respectful communication.",
+                "📚 Educational opportunity - share resources about positive online behavior.",
+                "👀 Keep monitoring - early intervention prevents escalation."
+            ]
+        }
         
     def analyze_message(self, content: str) -> Dict:
-        """Analyze message for abusive content."""
+        """
+        Dual AI Sentiment Analysis for Abuse Detection
+        
+        Combines TextBlob (pattern-based) and VADER (lexicon-based) for
+        comprehensive analysis. Returns forensics-grade evidence data.
+        """
         content_lower = content.lower()
         
+        # TextBlob sentiment analysis
         blob = TextBlob(content)
-        sentiment = blob.sentiment.polarity
+        textblob_sentiment = blob.sentiment.polarity
         
+        # VADER sentiment analysis (better for social media)
+        vader_scores = self.vader.polarity_scores(content)
+        vader_compound = vader_scores['compound']
+        
+        # Keyword detection with pattern matching
         detected_keywords = []
         for keyword in self.abusive_keywords:
             pattern = r'\b' + re.escape(keyword) + r'\b'
             if re.search(pattern, content_lower):
                 detected_keywords.append(keyword)
         
+        # Combined abuse score calculation
         keyword_score = len(detected_keywords) * self.KEYWORD_WEIGHT
-        sentiment_score = abs(min(sentiment, 0))
-        abuse_score = keyword_score + sentiment_score
+        textblob_score = abs(min(textblob_sentiment, 0))
+        vader_score = abs(min(vader_compound, 0))
         
-        is_abusive = abuse_score > self.ABUSE_SCORE_THRESHOLD or sentiment < self.SENTIMENT_THRESHOLD
+        # Weighted average of both sentiment analyzers
+        combined_sentiment = (textblob_sentiment + vader_compound) / 2
+        abuse_score = keyword_score + (textblob_score + vader_score) / 2
         
+        # Determine if abusive
+        is_abusive = (abuse_score > self.ABUSE_SCORE_THRESHOLD or 
+                     textblob_sentiment < self.SENTIMENT_THRESHOLD or
+                     vader_compound < self.VADER_THRESHOLD)
+        
+        # Severity classification
         severity = "low"
-        if abuse_score > 0.8:
+        if abuse_score > 0.8 or vader_compound < -0.7:
             severity = "high"
-        elif abuse_score > 0.5:
+        elif abuse_score > 0.5 or vader_compound < -0.4:
             severity = "medium"
+        
+        # Get prevention tip
+        prevention_tip = self.get_prevention_tip(severity)
         
         return {
             "is_abusive": is_abusive,
             "abuse_score": round(abuse_score, 3),
-            "sentiment": round(sentiment, 3),
+            "textblob_sentiment": round(textblob_sentiment, 3),
+            "vader_sentiment": round(vader_compound, 3),
+            "combined_sentiment": round(combined_sentiment, 3),
+            "vader_details": vader_scores,
             "detected_keywords": detected_keywords,
             "severity": severity,
-            "timestamp": datetime.utcnow().isoformat()
+            "prevention_tip": prevention_tip,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "content_hash": hashlib.sha256(content.encode()).hexdigest()[:16]
         }
+    
+    def get_prevention_tip(self, severity: str) -> str:
+        """Get appropriate prevention tip based on severity."""
+        import random
+        return random.choice(self.prevention_tips.get(severity, self.prevention_tips['low']))
     
     def check_spam(self, user_id: int, message_time: datetime) -> bool:
         """Check if user is spamming."""
@@ -79,14 +148,23 @@ class AbuseDetector:
 
 
 class ForensicsLogger:
-    """Enhanced forensics logging with CSV export."""
+    """
+    Forensics-Grade Evidence Collection and Management
+    
+    Implements comprehensive logging with data integrity verification (SHA-256),
+    CSV export for analysis, and prevention guidance integration.
+    Designed for academic research and legal documentation purposes.
+    """
     
     def __init__(self, log_dir: str = "forensics_logs"):
         self.log_dir = log_dir
         os.makedirs(log_dir, exist_ok=True)
         self.log_file = os.path.join(log_dir, "abuse_evidence.jsonl")
+        self.csv_file = os.path.join(log_dir, "abuse_evidence.csv")
         self.warnings_file = os.path.join(log_dir, "warnings.json")
+        self.interactions_file = os.path.join(log_dir, "user_interactions.json")
         self.load_warnings()
+        self.user_interactions = defaultdict(list)  # Track user interaction network
         
     def load_warnings(self):
         """Load warning counts from file."""
@@ -138,7 +216,13 @@ class ForensicsLogger:
             self.save_warnings()
         
     def log_evidence(self, message: discord.Message, analysis: Dict) -> None:
-        """Log evidence of abusive message."""
+        """
+        Log forensics evidence with data integrity verification.
+        
+        Creates both JSONL and CSV records for research analysis.
+        Includes SHA-256 hash for evidence verification and chain of custody.
+        """
+        # Create evidence record with data integrity
         evidence = {
             "message_id": str(message.id),
             "author_id": str(message.author.id),
@@ -150,11 +234,62 @@ class ForensicsLogger:
             "content": message.content,
             "created_at": message.created_at.isoformat(),
             "analysis": analysis,
-            "logged_at": datetime.utcnow().isoformat()
+            "logged_at": datetime.now(timezone.utc).isoformat(),
+            "evidence_hash": analysis.get('content_hash', hashlib.sha256(message.content.encode()).hexdigest()[:16])
         }
         
+        # Log to JSONL (for detailed records)
         with open(self.log_file, 'a', encoding='utf-8') as f:
             f.write(json.dumps(evidence, ensure_ascii=False) + '\n')
+        
+        # Log to CSV (for visualization and analysis)
+        self.log_to_csv(evidence)
+        
+        # Track user interactions for network analysis
+        if message.guild:
+            self.track_interaction(str(message.author.id), str(message.guild.id))
+    
+    def log_to_csv(self, evidence: Dict) -> None:
+        """Export evidence to CSV for analysis in Excel/pandas."""
+        file_exists = os.path.exists(self.csv_file)
+        
+        with open(self.csv_file, 'a', newline='', encoding='utf-8') as f:
+            fieldnames = [
+                'timestamp', 'message_id', 'author_id', 'author_name',
+                'guild_name', 'channel_name', 'content', 'severity',
+                'abuse_score', 'textblob_sentiment', 'vader_sentiment',
+                'keywords', 'prevention_tip', 'evidence_hash'
+            ]
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            
+            if not file_exists:
+                writer.writeheader()
+            
+            analysis = evidence.get('analysis', {})
+            writer.writerow({
+                'timestamp': evidence.get('created_at', ''),
+                'message_id': evidence.get('message_id', ''),
+                'author_id': evidence.get('author_id', ''),
+                'author_name': evidence.get('author_name', ''),
+                'guild_name': evidence.get('guild_name', ''),
+                'channel_name': evidence.get('channel_name', ''),
+                'content': evidence.get('content', '')[:500],  # Truncate for CSV
+                'severity': analysis.get('severity', ''),
+                'abuse_score': analysis.get('abuse_score', ''),
+                'textblob_sentiment': analysis.get('textblob_sentiment', ''),
+                'vader_sentiment': analysis.get('vader_sentiment', ''),
+                'keywords': ','.join(analysis.get('detected_keywords', [])),
+                'prevention_tip': analysis.get('prevention_tip', ''),
+                'evidence_hash': evidence.get('evidence_hash', '')
+            })
+    
+    def track_interaction(self, user_id: str, guild_id: str) -> None:
+        """Track user interactions for network visualization."""
+        key = f"{guild_id}:{user_id}"
+        self.user_interactions[key].append({
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'guild_id': guild_id
+        })
     
     def get_user_history(self, user_id: str, limit: int = 10) -> List[Dict]:
         """Retrieve abuse history for a specific user."""
@@ -216,7 +351,54 @@ class Guardify(commands.Bot):
         self.abuse_detector = AbuseDetector()
         self.forensics_logger = ForensicsLogger()
         self.auto_mod_enabled = {}  # Guild-specific auto-mod settings
+        self.log_channels = {}  # Guild-specific log channels
+        self.welcome_channels = {}  # Guild-specific welcome channels
+        self.welcome_messages = {}  # Guild-specific welcome messages
+        self.load_log_channels()
+        self.load_welcome_config()
         
+    def load_log_channels(self):
+        """Load log channels from file."""
+        log_file = 'forensics_logs/log_channels.json'
+        if os.path.exists(log_file):
+            with open(log_file, 'r') as f:
+                self.log_channels = json.load(f)
+    
+    def save_log_channels(self):
+        """Save log channels to file."""
+        os.makedirs('forensics_logs', exist_ok=True)
+        with open('forensics_logs/log_channels.json', 'w') as f:
+            json.dump(self.log_channels, f, indent=2)
+    
+    def load_welcome_config(self):
+        """Load welcome configuration from file."""
+        welcome_file = 'forensics_logs/welcome_config.json'
+        if os.path.exists(welcome_file):
+            with open(welcome_file, 'r') as f:
+                config = json.load(f)
+                self.welcome_channels = config.get('channels', {})
+                self.welcome_messages = config.get('messages', {})
+    
+    def save_welcome_config(self):
+        """Save welcome configuration to file."""
+        os.makedirs('forensics_logs', exist_ok=True)
+        with open('forensics_logs/welcome_config.json', 'w') as f:
+            json.dump({
+                'channels': self.welcome_channels,
+                'messages': self.welcome_messages
+            }, f, indent=2)
+    
+    async def log_to_channel(self, guild_id: int, embed: discord.Embed):
+        """Send log message to configured log channel."""
+        channel_id = self.log_channels.get(str(guild_id))
+        if channel_id:
+            try:
+                channel = self.get_channel(int(channel_id))
+                if channel:
+                    await channel.send(embed=embed)
+            except Exception as e:
+                print(f"Failed to send log to channel: {e}")
+    
     async def setup_hook(self):
         """Setup hook for slash commands."""
         try:
@@ -276,6 +458,46 @@ class Guardify(commands.Bot):
                 except:
                     pass
                 break
+    
+    async def on_member_join(self, member: discord.Member):
+        """Send welcome message when a member joins the server."""
+        guild_id = str(member.guild.id)
+        
+        # Check if welcome is configured for this guild
+        if guild_id not in self.welcome_channels:
+            return
+        
+        channel_id = self.welcome_channels[guild_id]
+        channel = self.get_channel(int(channel_id))
+        
+        if not channel:
+            return
+        
+        # Get custom message or use default
+        custom_message = self.welcome_messages.get(guild_id, "")
+        
+        # Replace placeholders
+        if custom_message:
+            message_text = custom_message.replace("{user}", member.mention)
+            message_text = message_text.replace("{server}", member.guild.name)
+            message_text = message_text.replace("{count}", str(member.guild.member_count))
+        else:
+            message_text = f"Welcome to **{member.guild.name}**, {member.mention}! 🎉\nYou are member #{member.guild.member_count}!"
+        
+        # Create welcome embed
+        embed = discord.Embed(
+            title="👋 Welcome!",
+            description=message_text,
+            color=discord.Color.green(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_footer(text=f"Member #{member.guild.member_count}")
+        
+        try:
+            await channel.send(embed=embed)
+        except Exception as e:
+            print(f"Failed to send welcome message: {e}")
         
     async def on_message(self, message: discord.Message):
         """Process every message for abuse detection."""
@@ -342,6 +564,23 @@ class Guardify(commands.Bot):
             
             await message.channel.send(embed=embed, delete_after=10)
             
+            # Send log to log channel
+            log_embed = discord.Embed(
+                title="🚨 Auto-Moderation Action",
+                color=discord.Color.red(),
+                timestamp=datetime.utcnow()
+            )
+            log_embed.add_field(name="User", value=f"{message.author.mention} ({message.author})", inline=True)
+            log_embed.add_field(name="Channel", value=message.channel.mention, inline=True)
+            log_embed.add_field(name="Warnings", value=f"{warning_count}/3", inline=True)
+            log_embed.add_field(name="Message", value=message.content[:1000], inline=False)
+            log_embed.add_field(name="Severity", value=analysis['severity'].upper(), inline=True)
+            log_embed.add_field(name="Score", value=str(analysis['abuse_score']), inline=True)
+            if analysis.get('detected_keywords'):
+                log_embed.add_field(name="Keywords", value=", ".join(analysis['detected_keywords']), inline=False)
+            
+            await self.log_to_channel(message.guild.id, log_embed)
+            
         except Exception as e:
             print(f"Error handling abusive message: {e}")
 
@@ -383,6 +622,18 @@ async def warn(ctx, member: discord.Member, *, reason: str = "No reason provided
     embed.add_field(name="Reason", value=reason, inline=False)
     
     await ctx.send(embed=embed)
+    
+    # Log to channel
+    log_embed = discord.Embed(
+        title="⚠️ User Warned",
+        color=discord.Color.orange(),
+        timestamp=datetime.utcnow()
+    )
+    log_embed.add_field(name="User", value=f"{member.mention} ({member})", inline=True)
+    log_embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
+    log_embed.add_field(name="Warnings", value=f"{warning_count}/3", inline=True)
+    log_embed.add_field(name="Reason", value=reason, inline=False)
+    await bot.log_to_channel(ctx.guild.id, log_embed)
     
     # Try to DM the user
     try:
@@ -499,6 +750,9 @@ async def kick(ctx, member: discord.Member, *, reason: str = "No reason provided
     
     await member.kick(reason=reason)
     await ctx.send(embed=embed)
+    
+    # Log to channel
+    await bot.log_to_channel(ctx.guild.id, embed)
 
 
 @bot.hybrid_command(name='ban', description='Ban a user from the server')
@@ -531,6 +785,9 @@ async def ban(ctx, member: discord.Member, *, reason: str = "No reason provided"
     
     await member.ban(reason=reason, delete_message_days=1)
     await ctx.send(embed=embed)
+    
+    # Log to channel
+    await bot.log_to_channel(ctx.guild.id, embed)
 
 
 @bot.hybrid_command(name='timeout', description='Timeout a user')
@@ -553,6 +810,9 @@ async def timeout(ctx, member: discord.Member, duration: int, *, reason: str = "
     embed.add_field(name="Reason", value=reason, inline=False)
     
     await ctx.send(embed=embed)
+    
+    # Log to channel
+    await bot.log_to_channel(ctx.guild.id, embed)
 
 
 @bot.hybrid_command(name='purge', description='Delete multiple messages')
@@ -665,6 +925,212 @@ async def stats(ctx):
     await ctx.send(embed=embed)
 
 
+@bot.hybrid_command(name='export', description='Export forensics data for analysis')
+@commands.has_permissions(administrator=True)
+async def export_data(ctx):
+    """
+    Export evidence data in CSV format for analysis.
+    
+    Perfect for importing into Excel, pandas, or data visualization tools.
+    """
+    csv_path = bot.forensics_logger.csv_file
+    
+    if not os.path.exists(csv_path):
+        await ctx.send("❌ No evidence data available to export.", ephemeral=True)
+        return
+    
+    embed = discord.Embed(
+        title="📊 Forensics Data Export",
+        description="Evidence data ready for analysis",
+        color=discord.Color.blue()
+    )
+    
+    # Get file size
+    file_size = os.path.getsize(csv_path) / 1024  # KB
+    
+    embed.add_field(name="Format", value="CSV (Comma-Separated Values)", inline=True)
+    embed.add_field(name="File Size", value=f"{file_size:.2f} KB", inline=True)
+    embed.add_field(
+        name="📈 Compatible With",
+        value="• Microsoft Excel\n• Google Sheets\n• Python pandas\n• Matplotlib\n• Data visualization tools",
+        inline=False
+    )
+    embed.add_field(
+        name="🔐 Data Integrity",
+        value="Each record includes SHA-256 hash for verification",
+        inline=False
+    )
+    
+    await ctx.send(embed=embed)
+    await ctx.send(file=discord.File(csv_path, filename="guardify_evidence_export.csv"))
+
+
+@bot.hybrid_command(name='prevention', description='Get prevention tips and guidance')
+@commands.has_permissions(manage_messages=True)
+async def prevention_tips(ctx):
+    """
+    Display comprehensive prevention tips and resources.
+    
+    Helps educators and moderators prevent escalation of harmful behavior.
+    """
+    embed = discord.Embed(
+        title="🛡️ Abuse Prevention Guide",
+        description="Evidence-based strategies for preventing online harassment",
+        color=discord.Color.blue(),
+        timestamp=datetime.now(timezone.utc)
+    )
+    
+    embed.add_field(
+        name="🚨 High-Risk Situations",
+        value="• Document all evidence immediately\n"
+              "• Contact appropriate authorities\n"
+              "• Provide mental health resources\n"
+              "• Implement immediate cooling-off period\n"
+              "• Notify parents/guardians if minors involved",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="⚠️ Medium-Risk Prevention",
+        value="• Review community guidelines together\n"
+              "• Enable auto-moderation features\n"
+              "• Increase monitoring frequency\n"
+              "• Provide educational resources\n"
+              "• Schedule conflict resolution session",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="💡 Low-Risk Best Practices",
+        value="• Gentle reminders about respectful communication\n"
+              "• Share positive behavior examples\n"
+              "• Encourage empathy and understanding\n"
+              "• Monitor for pattern changes\n"
+              "• Foster inclusive community culture",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="📚 Resources",
+        value="• [Cyberbullying Research Center](https://cyberbullying.org)\n"
+              "• [National Suicide Prevention Lifeline](https://988lifeline.org)\n"
+              "• [Crisis Text Line](https://www.crisistextline.org)\n"
+              "• [StopBullying.gov](https://www.stopbullying.gov)",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🔧 Guardify Tools",
+        value="`/scan` - Analyze specific messages\n"
+              "`/automod enable` - Automatic detection\n"
+              "`/setlog` - Configure logging\n"
+              "`/export` - Export data for analysis",
+        inline=False
+    )
+    
+    embed.set_footer(text="Early intervention prevents escalation")
+    
+    await ctx.send(embed=embed)
+
+
+@bot.hybrid_command(name='setwelcome', description='Set welcome channel and message')
+@commands.has_permissions(administrator=True)
+async def setwelcome(ctx, channel: discord.TextChannel = None, *, message: str = None):
+    """Set or clear the welcome channel and custom message.
+    
+    Placeholders:
+    {user} - Mentions the new member
+    {server} - Server name
+    {count} - Member count
+    """
+    if channel is None:
+        # Clear welcome
+        if str(ctx.guild.id) in bot.welcome_channels:
+            del bot.welcome_channels[str(ctx.guild.id)]
+            if str(ctx.guild.id) in bot.welcome_messages:
+                del bot.welcome_messages[str(ctx.guild.id)]
+            bot.save_welcome_config()
+            await ctx.send("✅ Welcome messages disabled.", ephemeral=True)
+        else:
+            await ctx.send("❌ Welcome messages are not currently enabled.", ephemeral=True)
+    else:
+        # Set welcome channel
+        bot.welcome_channels[str(ctx.guild.id)] = str(channel.id)
+        
+        # Set custom message if provided
+        if message:
+            bot.welcome_messages[str(ctx.guild.id)] = message
+        
+        bot.save_welcome_config()
+        
+        embed = discord.Embed(
+            title="✅ Welcome Messages Enabled",
+            description=f"New members will be welcomed in {channel.mention}",
+            color=discord.Color.green()
+        )
+        
+        if message:
+            embed.add_field(
+                name="📝 Custom Message",
+                value=message,
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name="📝 Message",
+                value="Using default welcome message",
+                inline=False
+            )
+        
+        embed.add_field(
+            name="💡 Placeholders",
+            value="`{user}` - Mention member\n"
+                  "`{server}` - Server name\n"
+                  "`{count}` - Member count",
+            inline=False
+        )
+        embed.add_field(
+            name="🔧 Example",
+            value="`/setwelcome #general Welcome {user} to {server}! You are member #{count}!`",
+            inline=False
+        )
+        
+        await ctx.send(embed=embed)
+
+@bot.hybrid_command(name='setlog', description='Set the channel for moderation logs')
+@commands.has_permissions(administrator=True)
+async def setlog(ctx, channel: discord.TextChannel = None):
+    """Set or clear the log channel."""
+    if channel is None:
+        # Clear log channel
+        if str(ctx.guild.id) in bot.log_channels:
+            del bot.log_channels[str(ctx.guild.id)]
+            bot.save_log_channels()
+            await ctx.send("✅ Log channel cleared. Moderation logs will no longer be posted.", ephemeral=True)
+        else:
+            await ctx.send("❌ No log channel is currently set.", ephemeral=True)
+    else:
+        # Set log channel
+        bot.log_channels[str(ctx.guild.id)] = str(channel.id)
+        bot.save_log_channels()
+        
+        embed = discord.Embed(
+            title="✅ Log Channel Set",
+            description=f"Moderation logs will now be posted to {channel.mention}",
+            color=discord.Color.green()
+        )
+        embed.add_field(
+            name="📋 What Gets Logged",
+            value="• Auto-moderation actions\n"
+                  "• Warnings issued\n"
+                  "• Kicks and bans\n"
+                  "• Timeouts\n"
+                  "• Abuse detections",
+            inline=False
+        )
+        await ctx.send(embed=embed)
+
+
 @bot.hybrid_command(name='automod', description='Enable/disable auto-moderation')
 @commands.has_permissions(administrator=True)
 async def automod(ctx, action: str):
@@ -727,7 +1193,9 @@ async def help_command(ctx):
     
     embed.add_field(
         name="⚙️ Settings",
-        value="`/automod enable/disable` - Toggle auto-moderation",
+        value="`/automod enable/disable` - Toggle auto-moderation\n"
+              "`/setlog #channel` - Set moderation log channel\n"
+              "`/setwelcome #channel [message]` - Set welcome messages",
         inline=False
     )
     
@@ -735,6 +1203,7 @@ async def help_command(ctx):
         name="🤖 Auto Features",
         value="• Automatic abuse detection\n"
               "• Spam prevention\n"
+              "• Welcome messages\n"
               "• Forensics logging",
         inline=False
     )

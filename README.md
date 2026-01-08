@@ -1,30 +1,47 @@
 # Guardify 🛡️
 
-AI-enabled Discord bot for social media forensics to detect and prevent digital abuse.
+**AI-Enabled Social Media Forensics Investigation for Detecting and Preventing Digital Abuse**
 
 ## Overview
 
-Guardify is a Python-based Discord bot that uses sentiment analysis and keyword detection to identify abusive content in real-time. The bot automatically logs evidence for digital forensics, helping server moderators maintain a safe and respectful community environment.
+Guardify is an academic research tool and Discord moderation bot that uses **dual AI sentiment analysis** (TextBlob + VADER) to detect digital abuse in real-time. Designed for researchers, educators, and community moderators, it provides forensics-grade evidence collection with SHA-256 integrity verification and CSV export for data analysis.
 
-## Features
+## 🎓 Academic Features
 
-### 🤖 Automatic Abuse Detection
+### 🤖 Dual AI Detection System
+- **TextBlob**: Pattern-based sentiment analysis
+- **VADER**: Social media-optimized sentiment analyzer
+- Combined sentiment scoring for improved accuracy
 - Real-time monitoring of all Discord messages
-- Sentiment analysis using TextBlob NLP library
-- Keyword-based detection for common abusive terms
-- Multi-level severity classification (Low, Medium, High)
+- Multi-level severity classification (High, Medium, Low)
 
-### 📊 Forensics Logging
-- Comprehensive evidence collection in JSONL format
-- Stores message content, author details, timestamps, and analysis results
-- Enables investigation and pattern analysis
-- User abuse history tracking
+### 🔐 Forensics-Grade Evidence Collection
+- **SHA-256 hashing** for evidence integrity verification
+- **CSV export** for Excel, pandas, and statistical analysis
+- **JSONL format** for detailed forensics logs
+- Comprehensive metadata including timestamps, sentiment scores, and user data
+- User interaction network tracking for pattern analysis
 
-### 🔧 Moderator Commands
-- `!scan <message>` - Manually analyze a message for abusive content
-- `!history @user [limit]` - View abuse history for a specific user
-- `!stats` - Display overall abuse detection statistics
-- `!help_ranger` - Show available commands and usage
+### 🛡️ Prevention & Early Intervention
+- **Severity-based prevention tips** and guidance
+- Evidence-based intervention strategies
+- Crisis resource integration
+- Automatic alerts for high-risk situations
+- Progressive warning system
+
+### 📊 Data Analysis & Research
+- **CSV export** compatible with Excel, pandas, R, SPSS
+- Statistical analysis capabilities
+- Network analysis of user interactions
+- Timeline tracking for longitudinal studies
+- Perfect for cyberbullying research and data science projects
+
+### 🔧 Professional Moderation Tools
+- **15 slash commands** for comprehensive moderation
+- Auto-moderation with configurable sensitivity
+- Welcome messages and log channels
+- Warning system with history tracking
+- Web dashboard with OAuth2 authentication
 
 ## Installation
 
@@ -182,34 +199,113 @@ KEYWORD_WEIGHT = 0.4        # Higher = keywords matter more
 ABUSE_SCORE_THRESHOLD = 0.4 # Minimum score to classify as abusive
 ```
 
-## Security & Privacy
+## 📊 Quick Command Reference
+
+| Command | Purpose | Permission Required |
+|---------|---------|---------------------|
+| `/scan <message>` | Analyze specific message | Manage Messages |
+| `/warn @user <reason>` | Warn a user | Manage Messages |
+| `/kick @user <reason>` | Kick a user | Kick Members |
+| `/ban @user <reason>` | Ban a user | Ban Members |
+| `/timeout @user <duration>` | Timeout a user | Moderate Members |
+| `/purge <amount>` | Delete messages | Manage Messages |
+| `/history @user` | View user's warnings | Manage Messages |
+| `/warnings` | View all warnings | Manage Messages |
+| `/removewarn @user <warn_id>` | Remove specific warning | Manage Messages |
+| `/clearwarnings @user` | Clear all warnings | Administrator |
+| `/stats` | View abuse statistics | Manage Messages |
+| `/export` | Export forensics data (CSV) | Administrator |
+| `/prevention` | Prevention tips & resources | Manage Messages |
+| `/automod <enable/disable>` | Toggle auto-moderation | Manage Server |
+| `/setlog <#channel>` | Set log channel | Administrator |
+| `/setwelcome <#channel>` | Set welcome channel | Administrator |
+
+## 🎓 Academic Research
+
+### For Researchers
+Guardify provides forensics-grade data for academic research:
+
+- **CSV Export**: `/export` command provides structured data
+- **Dual AI Scores**: Both TextBlob and VADER sentiment scores
+- **Integrity Verification**: SHA-256 hashes for evidence validation
+- **Network Analysis**: User interaction tracking across servers
+- **Longitudinal Studies**: Timestamp-based timeline analysis
+
+### Sample Research Applications
+- Cyberbullying detection and prevention studies
+- Social media safety research
+- Machine learning training datasets
+- Educational intervention effectiveness
+- Community moderation best practices
+
+### Data Fields Available
+```csv
+evidence_id, timestamp, guild_id, guild_name, user_id, username,
+channel_id, message_content, severity, textblob_sentiment,
+vader_sentiment, combined_sentiment, content_hash
+```
+
+See [`ACADEMIC_FEATURES.md`](ACADEMIC_FEATURES.md) for detailed documentation.
+
+## 🔐 Security & Privacy
 
 - Bot token should never be committed to version control
 - Forensics logs contain sensitive data - store securely
 - Only authorized moderators can use detection commands
 - Evidence logs should comply with your privacy policy
+- SHA-256 hashing ensures evidence integrity
 - Consider data retention policies for forensics logs
 
-## Limitations
+## ⚠️ Limitations
 
 - Sentiment analysis accuracy depends on context and sarcasm detection
 - Keyword lists need regular updates
-- False positives may occur
+- False positives may occur with nuanced language
 - Does not detect image-based abuse
 - Requires message content intent (privacy implications)
+- AI models trained primarily on English text
 
-## Future Enhancements
+## 🚀 Future Enhancements
 
-- Machine learning-based classification
-- Multi-language support
-- Image/attachment analysis
-- Integration with moderation actions
-- Web dashboard for forensics review
-- Export reports in various formats
+- ✅ ~~Dual AI sentiment analysis~~ (Implemented)
+- ✅ ~~CSV export for data analysis~~ (Implemented)
+- ✅ ~~SHA-256 integrity verification~~ (Implemented)
+- ✅ ~~Prevention tips and guidance~~ (Implemented)
+- [ ] Timeline visualization (matplotlib)
+- [ ] User network graphs
+- [ ] Multi-language support
+- [ ] Image/attachment analysis
+- [ ] Automated PDF reports
+- [ ] Custom ML model training
 
-## Contributing
+## 📞 Crisis Resources
+
+If you or someone you know is experiencing a crisis:
+
+- **988 Suicide & Crisis Lifeline**: Call/text 988 or visit [988lifeline.org](https://988lifeline.org)
+- **Crisis Text Line**: Text HOME to 741741
+- **Cyberbullying Research Center**: [cyberbullying.org](https://cyberbullying.org)
+- **StopBullying.gov**: [stopbullying.gov](https://www.stopbullying.gov)
+
+## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
+
+### Areas for Contribution
+- Additional AI models for detection
+- Visualization features (matplotlib/seaborn)
+- Multi-language support
+- Documentation improvements
+- Test coverage expansion
+
+## 📚 Documentation
+
+- **[Academic Features](ACADEMIC_FEATURES.md)** - Detailed research features
+- **[Quick Start Guide](QUICKSTART.md)** - Get started quickly
+- **[Setup Guide](SETUP.md)** - Complete setup instructions
+- **[OAuth Setup](OAUTH_SETUP.md)** - Dashboard authentication
+- **[Project Summary](PROJECT_SUMMARY.md)** - Complete feature list
+- **[Web Dashboard Guide](WEB_DASHBOARD_GUIDE.md)** - Dashboard usage
 
 ## License
 

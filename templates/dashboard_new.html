@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guardify Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0f0f23;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+
+        .container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 250px;
+            background: #16172a;
+            border-right: 1px solid #2a2d47;
+            padding: 20px 0;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        .logo {
+            padding: 0 20px 30px;
+            border-bottom: 1px solid #2a2d47;
+            margin-bottom: 20px;
+        }
+
+        .logo h1 {
+            color: #667eea;
+            font-size: 1.8em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .server-select {
+            padding: 0 20px;
+            margin-bottom: 30px;
+        }
+
+        .server-select select {
+            width: 100%;
+            padding: 12px;
+            background: #0f0f23;
+            border: 1px solid #2a2d47;
+            border-radius: 8px;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .server-select select:hover {
+            border-color: #667eea;
+        }
+
+        .nav-section {
+            margin-bottom: 30px;
+        }
+
+        .nav-section-title {
+            padding: 0 20px;
+            color: #6b7280;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+        }
+
+        .nav-item {
+            padding: 12px 20px;
+            color: #9ca3af;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: #1a1c3a;
+            color: #e0e0e0;
+            border-left-color: #667eea;
+        }
+
+        .nav-item.active {
+            background: #1a1c3a;
+            color: #667eea;
+            border-left-color: #667eea;
+        }
+
+        .nav-item .icon {
+            font-size: 1.2em;
+            width: 24px;
+            text-align: center;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: 250px;
+            padding: 30px;
+        }
+
+        .header {
+            background: #16172a;
+            padding: 25px 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid #2a2d47;
+        }
+
+        .header h2 {
+            color: #e0e0e0;
+            font-size: 2em;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #2a2d47;
+            color: #e0e0e0;
+        }
+
+        .btn-secondary:hover {
+            background: #3a3d57;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: #16172a;
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid #2a2d47;
+            transition: all 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            border-color: #667eea;
+        }
+
+        .stat-card .icon {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+        }
+
+        .stat-card .value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-card .label {
+            color: #9ca3af;
+            font-size: 1em;
+        }
+
+        /* Content Sections */
+        .content-section {
+            background: #16172a;
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid #2a2d47;
+            margin-bottom: 20px;
+        }
+
+        .content-section h3 {
+            color: #e0e0e0;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .section-hidden {
+            display: none;
+        }
+
+        /* Settings Form */
+        .setting-item {
+            padding: 20px;
+            border: 1px solid #2a2d47;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            background: #0f0f23;
+        }
+
+        .setting-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .setting-header h4 {
+            color: #e0e0e0;
+            font-size: 1.1em;
+        }
+
+        .setting-description {
+            color: #9ca3af;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 30px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #2a2d47;
+            transition: 0.4s;
+            border-radius: 30px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .toggle-slider {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        input:checked + .toggle-slider:before {
+            transform: translateX(30px);
+        }
+
+        /* Logs Table */
+        .logs-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .logs-table th {
+            background: #0f0f23;
+            padding: 15px;
+            text-align: left;
+            color: #9ca3af;
+            font-weight: 600;
+            border-bottom: 2px solid #2a2d47;
+        }
+
+        .logs-table td {
+            padding: 15px;
+            border-bottom: 1px solid #2a2d47;
+        }
+
+        .logs-table tr:hover {
+            background: #1a1c3a;
+        }
+
+        .severity-badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .severity-high {
+            background: rgba(231, 76, 60, 0.2);
+            color: #e74c3c;
+        }
+
+        .severity-medium {
+            background: rgba(243, 156, 18, 0.2);
+            color: #f39c12;
+        }
+
+        .severity-low {
+            background: rgba(46, 204, 113, 0.2);
+            color: #2ecc71;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 60px;
+            color: #6b7280;
+        }
+
+        .no-data .icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                position: relative;
+                height: auto;
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="logo">
+                <h1>🛡️ Guardify</h1>
+            </div>
+
+            <div class="server-select">
+                <select id="server-selector" onchange="loadServerData()">
+                    <option value="">Select Server...</option>
+                </select>
+            </div>
+
+            <nav>
+                <div class="nav-section">
+                    <div class="nav-section-title">Overview</div>
+                    <div class="nav-item active" onclick="showSection('dashboard')">
+                        <span class="icon">📊</span>
+                        <span>Dashboard</span>
+                    </div>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title">Modules</div>
+                    <div class="nav-item" onclick="showSection('moderation')">
+                        <span class="icon">🛡️</span>
+                        <span>Moderation</span>
+                    </div>
+                    <div class="nav-item" onclick="showSection('logging')">
+                        <span class="icon">📝</span>
+                        <span>Logging</span>
+                    </div>
+                    <div class="nav-item" onclick="showSection('automod')">
+                        <span class="icon">🤖</span>
+                        <span>Auto-Moderation</span>
+                    </div>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title">Settings</div>
+                    <div class="nav-item" onclick="showSection('settings')">
+                        <span class="icon">⚙️</span>
+                        <span>General Settings</span>
+                    </div>
+                </div>
+            </nav>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Header -->
+            <div class="header">
+                <div>
+                    <h2 id="page-title">Dashboard</h2>
+                </div>
+                <div class="header-actions">
+                    {% if user %}
+                    <a href="/guilds" class="btn btn-secondary">Switch Server</a>
+                    <a href="/logout" class="btn btn-secondary">Logout</a>
+                    {% else %}
+                    <a href="/login" class="btn btn-primary">Login with Discord</a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Dashboard Section -->
+            <div id="section-dashboard" class="section">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="icon">📊</div>
+                        <div class="value" id="total-cases">-</div>
+                        <div class="label">Total Cases</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="icon">👥</div>
+                        <div class="value" id="unique-users">-</div>
+                        <div class="label">Unique Users</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="icon">⚠️</div>
+                        <div class="value" id="high-severity">-</div>
+                        <div class="label">High Severity</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="icon">🔔</div>
+                        <div class="value" id="total-warnings">-</div>
+                        <div class="label">Active Warnings</div>
+                    </div>
+                </div>
+
+                <div class="content-section">
+                    <h3>Recent Moderation Cases</h3>
+                    <table class="logs-table" id="recent-cases-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>User</th>
+                                <th>Type</th>
+                                <th>Severity</th>
+                                <th>Message</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recent-cases-body">
+                            <tr><td colspan="5" class="no-data"><div class="icon">⏳</div>Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Moderation Section -->
+            <div id="section-moderation" class="section section-hidden">
+                <div class="content-section">
+                    <h3>Moderation Logs</h3>
+                    <table class="logs-table" id="mod-logs-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Action</th>
+                                <th>User</th>
+                                <th>Moderator</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mod-logs-body">
+                            <tr><td colspan="5" class="no-data"><div class="icon">📋</div>No moderation actions yet</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Logging Section -->
+            <div id="section-logging" class="section section-hidden">
+                <div class="content-section">
+                    <h3>Logging Configuration</h3>
+                    <div class="setting-item">
+                        <div class="setting-header">
+                            <h4>📝 Moderation Log Channel</h4>
+                        </div>
+                        <div class="setting-description">
+                            All moderation actions (warns, kicks, bans, timeouts) will be logged to this channel.
+                        </div>
+                        <p style="color: #667eea; font-size: 0.9em;">Use <code style="background: #0f0f23; padding: 3px 8px; border-radius: 4px;">/setlog #channel</code> in Discord to configure</p>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <div class="setting-header">
+                            <h4>👋 Welcome Messages</h4>
+                        </div>
+                        <div class="setting-description">
+                            Send a welcome message when new members join your server.
+                        </div>
+                        <p style="color: #667eea; font-size: 0.9em; margin-bottom: 10px;">Use <code style="background: #0f0f23; padding: 3px 8px; border-radius: 4px;">/setwelcome #channel [message]</code> in Discord</p>
+                        <div style="background: #0f0f23; padding: 15px; border-radius: 8px; border-left: 3px solid #667eea;">
+                            <div style="color: #9ca3af; font-size: 0.85em; margin-bottom: 8px;">PLACEHOLDERS</div>
+                            <code style="display: block; margin: 5px 0;">{user}</code> - Mention the new member<br>
+                            <code style="display: block; margin: 5px 0;">{server}</code> - Server name<br>
+                            <code style="display: block; margin: 5px 0;">{count}</code> - Member count
+                        </div>
+                        <div style="background: #1a1c3a; padding: 15px; border-radius: 8px; margin-top: 10px;">
+                            <div style="color: #9ca3af; font-size: 0.85em; margin-bottom: 8px;">EXAMPLE</div>
+                            <code style="color: #667eea;">/setwelcome #welcome Welcome {user} to {server}! You're member #{count}!</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Auto-Moderation Section -->
+            <div id="section-automod" class="section section-hidden">
+                <div class="content-section">
+                    <h3>Auto-Moderation Settings</h3>
+                    
+                    <div class="setting-item">
+                        <div class="setting-header">
+                            <h4>🤖 Enable Auto-Moderation</h4>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="automod-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="setting-description">
+                            Automatically detect and take action on abusive messages using AI sentiment analysis.
+                        </div>
+                        <p style="color: #667eea; font-size: 0.9em; margin-top: 10px;">Use <code style="background: #0f0f23; padding: 3px 8px; border-radius: 4px;">/automod enable</code> or <code style="background: #0f0f23; padding: 3px 8px; border-radius: 4px;">/automod disable</code> in Discord</p>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-header">
+                            <h4>⚡ Features</h4>
+                        </div>
+                        <div class="setting-description">
+                            <ul style="list-style: none; padding: 0; margin: 15px 0 0 0;">
+                                <li style="padding: 8px 0; border-bottom: 1px solid #2a2d47;">✅ AI-powered sentiment analysis</li>
+                                <li style="padding: 8px 0; border-bottom: 1px solid #2a2d47;">✅ Keyword-based detection</li>
+                                <li style="padding: 8px 0; border-bottom: 1px solid #2a2d47;">✅ Spam prevention</li>
+                                <li style="padding: 8px 0; border-bottom: 1px solid #2a2d47;">✅ Progressive warning system (1→2→3→timeout)</li>
+                                <li style="padding: 8px 0;">✅ Forensics logging</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Section -->
+            <div id="section-settings" class="section section-hidden">
+                <div class="content-section">
+                    <h3>General Settings</h3>
+                    
+                    <div class="setting-item">
+                        <div class="setting-header">
+                            <h4>🛡️ Server Information</h4>
+                        </div>
+                        <div class="setting-description">
+                            <p style="margin: 10px 0;">Server ID: <code id="server-id-display" style="background: #0f0f23; padding: 3px 8px; border-radius: 4px;">-</code></p>
+                            <p style="margin: 10px 0;">Bot Commands: <strong>14 slash commands</strong></p>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-header">
+                            <h4>📚 Available Commands</h4>
+                        </div>
+                        <div class="setting-description">
+                            <ul style="list-style: none; padding: 0; margin: 15px 0 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                                <li style="padding: 8px; background: #0f0f23; border-radius: 4px;"><code>/warn</code> - Warn user</li>
+                                <li style="padding: 8px; background: #0f0f23; border-radius: 4px;"><code>/kick</code> - Kick user</li>
+                                <li style="padding: 8px; background: #0f0f23; border-radius: 4px;"><code>/ban</code> - Ban user</li>
+                                <li style="padding: 8px; background: #0f0f23; border-radius: 4px;"><code>/timeout</code> - Timeout user</li>
+                                <li style="padding: 8px; background: #0f0f23; border-radius: 4px;"><code>/purge</code> - Delete messages</li>
+                                <li style="padding: 8px; background: #0f0f23; border-radius: 4px;"><code>/scan</code> - Scan message</li>
+                                <li style="padding: 8px; background: #0f0f23; border-radius: 4px;"><code>/warnings</code> - View warnings</li>
+                                <li style="padding: 8px; background: #0f0f23; border-radius: 4px;"><code>/removewarn</code> - Remove warning</li>
+                                <li style="padding: 8px; background: #0f0f23; border-radius: 4px;"><code>/clearwarnings</code> - Clear all</li>
+                                <li style="padding: 8px; background: #0f0f23; border-radius: 4px;"><code>/setlog</code> - Set log channel</li>
+                                <li style="padding: 8px; background: #0f0f23; border-radius: 4px;"><code>/setwelcome</code> - Welcome messages</li>
+                                <li style="padding: 8px; background: #0f0f23; border-radius: 4px;"><code>/automod</code> - Toggle automod</li>
+                                <li style="padding: 8px; background: #0f0f23; border-radius: 4px;"><code>/stats</code> - View statistics</li>
+                                <li style="padding: 8px; background: #0f0f23; border-radius: 4px;"><code>/history</code> - Abuse history</li>
+                                <li style="padding: 8px; background: #0f0f23; border-radius: 4px;"><code>/bothelp</code> - Show help</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const guildId = {{ guild_id|tojson if guild_id else 'null' }};
+        const guildName = {{ guild_name|tojson if guild_name else 'null' }};
+        let currentGuild = guildId;
+
+        // Navigation
+        function showSection(sectionName) {
+            // Hide all sections
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.add('section-hidden');
+            });
+            
+            // Show selected section
+            document.getElementById('section-' + sectionName).classList.remove('section-hidden');
+            
+            // Update active nav item
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+            
+            // Update page title
+            const titles = {
+                'dashboard': 'Dashboard',
+                'moderation': 'Moderation Logs',
+                'logging': 'Logging Configuration',
+                'automod': 'Auto-Moderation',
+                'settings': 'General Settings'
+            };
+            document.getElementById('page-title').textContent = titles[sectionName];
+        }
+
+        // Load server data
+        async function loadServerData() {
+            const selector = document.getElementById('server-selector');
+            currentGuild = selector.value;
+            
+            if (currentGuild) {
+                window.location.href = `/dashboard/${currentGuild}`;
+            }
+        }
+
+        // Load statistics
+        async function loadStats() {
+            try {
+                const endpoint = currentGuild ? `/api/stats/${currentGuild}` : '/api/stats';
+                const response = await fetch(endpoint);
+                const data = await response.json();
+                
+                // Update stats
+                document.getElementById('total-cases').textContent = data.stats.total_cases;
+                document.getElementById('unique-users').textContent = data.stats.unique_users;
+                document.getElementById('high-severity').textContent = data.stats.severity_breakdown.high;
+                document.getElementById('total-warnings').textContent = data.warnings.reduce((sum, w) => sum + w.count, 0);
+                
+                // Update server ID
+                if (currentGuild) {
+                    document.getElementById('server-id-display').textContent = currentGuild;
+                }
+                
+                // Update recent cases table
+                const tbody = document.getElementById('recent-cases-body');
+                if (data.stats.recent_cases.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="no-data"><div class="icon">📋</div>No cases recorded yet</td></tr>';
+                } else {
+                    tbody.innerHTML = data.stats.recent_cases.map(c => `
+                        <tr>
+                            <td>${new Date(c.created_at).toLocaleString()}</td>
+                            <td>${c.author_name}</td>
+                            <td>Abuse Detection</td>
+                            <td><span class="severity-badge severity-${c.analysis.severity}">${c.analysis.severity.toUpperCase()}</span></td>
+                            <td>${c.content.substring(0, 50)}${c.content.length > 50 ? '...' : ''}</td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Failed to load stats:', error);
+            }
+        }
+
+        // Initial load
+        if (guildName) {
+            const option = document.createElement('option');
+            option.value = guildId;
+            option.textContent = guildName;
+            option.selected = true;
+            document.getElementById('server-selector').appendChild(option);
+        }
+
+        loadStats();
+        
+        // Auto-refresh every 30 seconds
+        setInterval(loadStats, 30000);
+    </script>
+</body>
+</html>
