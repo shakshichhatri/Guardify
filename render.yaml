@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: guardify-bot
+    env: python
+    buildCommand: "pip install -r requirements.txt && python -m textblob.download_corpora"
+    startCommand: "python bot.py"
+    envVars:
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+    autoDeploy: true
