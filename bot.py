@@ -11,6 +11,8 @@ from datetime import datetime, timedelta
 from textblob import TextBlob
 import re
 from typing import Dict, List, Optional
+from threading import Thread
+from flask import Flask
 
 
 class AbuseDetector:
@@ -687,6 +689,22 @@ async def help_command(ctx):
     await ctx.send(embed=embed)
 
 
+# Simple web server for Render.com (keeps service alive)
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Guardify Bot is online! 🛡️"
+
+@app.route('/health')
+def health():
+    return {"status": "online", "bot": str(bot.user) if bot.is_ready() else "connecting"}
+
+def run_web_server():
+    """Run Flask web server in background thread."""
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
+
 def main():
     """Main entry point for the bot."""
     # Load bot token from environment variable or config file
@@ -704,6 +722,12 @@ def main():
         print("ERROR: Discord bot token not found!")
         print("Please set DISCORD_BOT_TOKEN environment variable or add it to config.json")
         return
+    
+    # Start web server in background (for Render.com)
+    server_thread = Thread(target=run_web_server)
+    server_thread.daemon = True
+    server_thread.start()
+    print("Web server started for health checks")
     
     # Run the bot
     bot.run(token)
