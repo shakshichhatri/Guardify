@@ -636,11 +636,11 @@ async def userinfo(ctx, member: discord.Member = None):
     await ctx.send(embed=embed)
 
 
-@bot.command(name='help_ranger')
+@bot.command(name='help_guardify')
 async def help_command(ctx):
     """
     Show bot help and available commands.
-    Usage: !help_ranger
+    Usage: !help_guardify
     """
     embed = discord.Embed(
         title="Guardify - Help",
@@ -684,7 +684,7 @@ async def help_command(ctx):
         inline=False
     )
     
-    embed.set_footer(text="Use !help_ranger to see this message again")
+    embed.set_footer(text="Use !help_guardify to see this message again")
     
     await ctx.send(embed=embed)
 
