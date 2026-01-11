@@ -308,6 +308,333 @@ async def statistics(ctx):
     await ctx.send(embed=embed)
 
 
+@bot.command(name='kick')
+@commands.has_permissions(kick_members=True)
+async def kick(ctx, member: discord.Member, *, reason: str = "No reason provided"):
+    """
+    Kick a member from the server.
+    Usage: !kick @user [reason]
+    """
+    try:
+        await member.kick(reason=f"{reason} | Kicked by {ctx.author}")
+        embed = discord.Embed(
+            title="Member Kicked",
+            description=f"{member.mention} has been kicked from the server.",
+            color=discord.Color.orange()
+        )
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
+        await ctx.send(embed=embed)
+    except discord.Forbidden:
+        await ctx.send("❌ I don't have permission to kick this member!")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='ban')
+@commands.has_permissions(ban_members=True)
+async def ban(ctx, member: discord.Member, *, reason: str = "No reason provided"):
+    """
+    Ban a member from the server.
+    Usage: !ban @user [reason]
+    """
+    try:
+        await member.ban(reason=f"{reason} | Banned by {ctx.author}", delete_message_days=1)
+        embed = discord.Embed(
+            title="Member Banned",
+            description=f"{member.mention} has been banned from the server.",
+            color=discord.Color.red()
+        )
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
+        await ctx.send(embed=embed)
+    except discord.Forbidden:
+        await ctx.send("❌ I don't have permission to ban this member!")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='unban')
+@commands.has_permissions(ban_members=True)
+async def unban(ctx, user_id: int, *, reason: str = "No reason provided"):
+    """
+    Unban a user from the server.
+    Usage: !unban <user_id> [reason]
+    """
+    try:
+        user = await bot.fetch_user(user_id)
+        await ctx.guild.unban(user, reason=f"{reason} | Unbanned by {ctx.author}")
+        embed = discord.Embed(
+            title="Member Unbanned",
+            description=f"{user.mention} has been unbanned from the server.",
+            color=discord.Color.green()
+        )
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
+        await ctx.send(embed=embed)
+    except discord.NotFound:
+        await ctx.send("❌ User not found or not banned!")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='timeout')
+@commands.has_permissions(moderate_members=True)
+async def timeout(ctx, member: discord.Member, duration: int, *, reason: str = "No reason provided"):
+    """
+    Timeout a member (mute) for specified minutes.
+    Usage: !timeout @user <minutes> [reason]
+    """
+    try:
+        from datetime import timedelta
+        await member.timeout(timedelta(minutes=duration), reason=f"{reason} | Timeout by {ctx.author}")
+        embed = discord.Embed(
+            title="Member Timed Out",
+            description=f"{member.mention} has been timed out for {duration} minutes.",
+            color=discord.Color.orange()
+        )
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
+        await ctx.send(embed=embed)
+    except discord.Forbidden:
+        await ctx.send("❌ I don't have permission to timeout this member!")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='untimeout')
+@commands.has_permissions(moderate_members=True)
+async def untimeout(ctx, member: discord.Member):
+    """
+    Remove timeout from a member.
+    Usage: !untimeout @user
+    """
+    try:
+        await member.timeout(None, reason=f"Timeout removed by {ctx.author}")
+        embed = discord.Embed(
+            title="Timeout Removed",
+            description=f"{member.mention} can now speak again.",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='warn')
+@commands.has_permissions(manage_messages=True)
+async def warn(ctx, member: discord.Member, *, reason: str = "No reason provided"):
+    """
+    Warn a member.
+    Usage: !warn @user [reason]
+    """
+    warnings_file = os.path.join(bot.forensics_logger.log_dir, "warnings.json")
+    
+    # Load existing warnings
+    warnings = {}
+    if os.path.exists(warnings_file):
+        with open(warnings_file, 'r') as f:
+            warnings = json.load(f)
+    
+    # Add warning
+    user_id = str(member.id)
+    if user_id not in warnings:
+        warnings[user_id] = []
+    
+    warnings[user_id].append({
+        "warned_by": str(ctx.author.id),
+        "warned_by_name": str(ctx.author),
+        "reason": reason,
+        "timestamp": datetime.utcnow().isoformat()
+    })
+    
+    # Save warnings
+    with open(warnings_file, 'w') as f:
+        json.dump(warnings, f, indent=2)
+    
+    # Send warning message
+    embed = discord.Embed(
+        title="Member Warned",
+        description=f"{member.mention} has been warned.",
+        color=discord.Color.gold()
+    )
+    embed.add_field(name="Reason", value=reason, inline=False)
+    embed.add_field(name="Total Warnings", value=str(len(warnings[user_id])), inline=False)
+    embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
+    await ctx.send(embed=embed)
+    
+    # Try to DM the user
+    try:
+        dm_embed = discord.Embed(
+            title="⚠️ Warning",
+            description=f"You have been warned in {ctx.guild.name}",
+            color=discord.Color.gold()
+        )
+        dm_embed.add_field(name="Reason", value=reason, inline=False)
+        await member.send(embed=dm_embed)
+    except:
+        pass
+
+
+@bot.command(name='warnings')
+@commands.has_permissions(manage_messages=True)
+async def warnings(ctx, member: discord.Member):
+    """
+    Check warnings for a member.
+    Usage: !warnings @user
+    """
+    warnings_file = os.path.join(bot.forensics_logger.log_dir, "warnings.json")
+    
+    if not os.path.exists(warnings_file):
+        await ctx.send(f"{member.mention} has no warnings.")
+        return
+    
+    with open(warnings_file, 'r') as f:
+        warnings_data = json.load(f)
+    
+    user_id = str(member.id)
+    user_warnings = warnings_data.get(user_id, [])
+    
+    if not user_warnings:
+        await ctx.send(f"{member.mention} has no warnings.")
+        return
+    
+    embed = discord.Embed(
+        title=f"Warnings for {member}",
+        description=f"Total warnings: {len(user_warnings)}",
+        color=discord.Color.gold()
+    )
+    
+    for i, warning in enumerate(user_warnings[-5:], 1):  # Show last 5
+        embed.add_field(
+            name=f"Warning #{i}",
+            value=f"**Reason:** {warning['reason']}\n**By:** {warning['warned_by_name']}\n**Date:** {warning['timestamp'][:10]}",
+            inline=False
+        )
+    
+    await ctx.send(embed=embed)
+
+
+@bot.command(name='clear')
+@commands.has_permissions(manage_messages=True)
+async def clear(ctx, amount: int = 10):
+    """
+    Delete multiple messages.
+    Usage: !clear [amount] (default: 10, max: 100)
+    """
+    if amount > 100:
+        amount = 100
+    
+    try:
+        deleted = await ctx.channel.purge(limit=amount + 1)  # +1 to include command message
+        msg = await ctx.send(f"✅ Deleted {len(deleted) - 1} messages.")
+        await msg.delete(delay=3)
+    except discord.Forbidden:
+        await ctx.send("❌ I don't have permission to delete messages!")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='slowmode')
+@commands.has_permissions(manage_channels=True)
+async def slowmode(ctx, seconds: int = 0):
+    """
+    Set slowmode delay in channel.
+    Usage: !slowmode <seconds> (0 to disable, max: 21600)
+    """
+    if seconds > 21600:
+        seconds = 21600
+    
+    try:
+        await ctx.channel.edit(slowmode_delay=seconds)
+        if seconds == 0:
+            await ctx.send("✅ Slowmode disabled.")
+        else:
+            await ctx.send(f"✅ Slowmode set to {seconds} seconds.")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='lock')
+@commands.has_permissions(manage_channels=True)
+async def lock(ctx):
+    """
+    Lock the current channel (prevent @everyone from sending messages).
+    Usage: !lock
+    """
+    try:
+        await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=False)
+        embed = discord.Embed(
+            title="🔒 Channel Locked",
+            description=f"{ctx.channel.mention} has been locked.",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='unlock')
+@commands.has_permissions(manage_channels=True)
+async def unlock(ctx):
+    """
+    Unlock the current channel.
+    Usage: !unlock
+    """
+    try:
+        await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=None)
+        embed = discord.Embed(
+            title="🔓 Channel Unlocked",
+            description=f"{ctx.channel.mention} has been unlocked.",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='serverinfo')
+async def serverinfo(ctx):
+    """
+    Display server information.
+    Usage: !serverinfo
+    """
+    guild = ctx.guild
+    embed = discord.Embed(
+        title=f"📊 {guild.name}",
+        color=discord.Color.blue()
+    )
+    embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+    embed.add_field(name="Owner", value=guild.owner.mention, inline=True)
+    embed.add_field(name="Members", value=guild.member_count, inline=True)
+    embed.add_field(name="Channels", value=len(guild.channels), inline=True)
+    embed.add_field(name="Roles", value=len(guild.roles), inline=True)
+    embed.add_field(name="Created", value=guild.created_at.strftime("%Y-%m-%d"), inline=True)
+    embed.add_field(name="Server ID", value=guild.id, inline=True)
+    await ctx.send(embed=embed)
+
+
+@bot.command(name='userinfo')
+async def userinfo(ctx, member: discord.Member = None):
+    """
+    Display user information.
+    Usage: !userinfo [@user]
+    """
+    member = member or ctx.author
+    embed = discord.Embed(
+        title=f"👤 {member}",
+        color=member.color
+    )
+    embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+    embed.add_field(name="ID", value=member.id, inline=True)
+    embed.add_field(name="Nickname", value=member.nick or "None", inline=True)
+    embed.add_field(name="Status", value=str(member.status).title(), inline=True)
+    embed.add_field(name="Joined Server", value=member.joined_at.strftime("%Y-%m-%d"), inline=True)
+    embed.add_field(name="Account Created", value=member.created_at.strftime("%Y-%m-%d"), inline=True)
+    embed.add_field(name="Roles", value=f"{len(member.roles) - 1}", inline=True)
+    await ctx.send(embed=embed)
+
+
 @bot.command(name='help_ranger')
 async def help_command(ctx):
     """
@@ -315,7 +642,7 @@ async def help_command(ctx):
     Usage: !help_ranger
     """
     embed = discord.Embed(
-        title="Respect Ranger - Help",
+        title="Guardify - Help",
         description="AI-enabled Discord bot for detecting and preventing digital abuse",
         color=discord.Color.purple()
     )
@@ -327,28 +654,36 @@ async def help_command(ctx):
     )
     
     embed.add_field(
-        name="!scan <message>",
-        value="Manually scan a message for abusive content (Requires: Manage Messages)",
+        name="📋 Abuse Detection",
+        value="`!scan <message>` - Manually scan text\n`!history @user` - View abuse history\n`!stats` - Detection statistics",
         inline=False
     )
     
     embed.add_field(
-        name="!history @user [limit]",
-        value="View abuse history for a specific user (Requires: Manage Messages)",
+        name="🔨 Moderation",
+        value="`!kick @user [reason]` - Kick member\n`!ban @user [reason]` - Ban member\n`!unban <id> [reason]` - Unban user\n`!timeout @user <min> [reason]` - Timeout member\n`!untimeout @user` - Remove timeout",
         inline=False
     )
     
     embed.add_field(
-        name="!stats",
-        value="View overall abuse detection statistics (Requires: Manage Messages)",
+        name="⚠️ Warnings",
+        value="`!warn @user [reason]` - Warn member\n`!warnings @user` - Check warnings",
         inline=False
     )
     
     embed.add_field(
-        name="!help_ranger",
-        value="Show this help message",
+        name="🧹 Channel Management",
+        value="`!clear [amount]` - Delete messages\n`!slowmode <sec>` - Set slowmode\n`!lock` - Lock channel\n`!unlock` - Unlock channel",
         inline=False
     )
+    
+    embed.add_field(
+        name="📊 Information",
+        value="`!serverinfo` - Server details\n`!userinfo [@user]` - User details",
+        inline=False
+    )
+    
+    embed.set_footer(text="Use !help_ranger to see this message again")
     
     await ctx.send(embed=embed)
 
