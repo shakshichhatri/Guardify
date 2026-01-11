@@ -724,13 +724,22 @@ def main():
         return
     
     # Start web server in background (for Render.com)
-    server_thread = Thread(target=run_web_server)
-    server_thread.daemon = True
-    server_thread.start()
-    print("Web server started for health checks")
+    try:
+        server_thread = Thread(target=run_web_server)
+        server_thread.daemon = True
+        server_thread.start()
+        print("Web server started for health checks")
+    except Exception as e:
+        print(f"Warning: Could not start web server: {e}")
     
     # Run the bot
-    bot.run(token)
+    try:
+        print("Starting Discord bot...")
+        bot.run(token)
+    except Exception as e:
+        print(f"ERROR: Bot failed to start: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
