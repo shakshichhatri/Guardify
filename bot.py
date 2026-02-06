@@ -18,17 +18,76 @@ from flask import Flask
 class AbuseDetector:
     """Detects abusive content using sentiment analysis and keyword matching."""
     
-    # Configurable thresholds
-    SENTIMENT_THRESHOLD = -0.3  # Negative sentiment threshold
-    KEYWORD_WEIGHT = 0.4
-    ABUSE_SCORE_THRESHOLD = 0.4  # Minimum score to classify as abusive
+    # Configurable thresholds - MADE MORE SENSITIVE
+    SENTIMENT_THRESHOLD = -0.2  # Negative sentiment threshold (lowered for sensitivity)
+    KEYWORD_WEIGHT = 0.5
+    ABUSE_SCORE_THRESHOLD = 0.3  # Minimum score to classify as abusive (lowered)
     
     def __init__(self):
-        # List of abusive keywords/phrases (expandable)
+        # Comprehensive list of abusive keywords/phrases
         self.abusive_keywords = [
-            'hate', 'kill', 'stupid', 'idiot', 'loser', 'trash',
-            'worthless', 'pathetic', 'disgusting', 'die', 'kys',
-            'retard', 'moron', 'dumb', 'ugly', 'fat', 'nazi'
+            # Insults & Slurs
+            'hate', 'kill', 'stupid', 'idiot', 'loser', 'trash', 'garbage',
+            'worthless', 'pathetic', 'disgusting', 'die', 'kys', 'kms',
+            'retard', 'retarded', 'moron', 'dumb', 'dumbass', 'dummy',
+            'ugly', 'fat', 'fatty', 'nazi', 'pig', 'scum', 'filth',
+            'shit', 'crap', 'damn', 'hell', 'bastard', 'bitch',
+            'ass', 'asshole', 'fuck', 'fucking', 'fucked', 'fucker',
+            'motherfucker', 'wtf', 'stfu', 'shut up',
+            
+            # Threats & Violence
+            'hurt', 'harm', 'attack', 'beat', 'punch', 'kick',
+            'stab', 'shoot', 'murder', 'suicide', 'hang yourself',
+            'jump off', 'kll', 'k1ll', 'd1e', 'unalive',
+            
+            # Derogatory Terms
+            'n***a', 'n***er', 'f****t', 'f*g', 'gay' 'queer',
+            'tranny', 'dyke', 'chink', 'spic', 'wetback',
+            'cracker', 'honky', 'gook', 'savage', 'ape',
+            
+            # Bullying Terms
+            'cancer', 'tumor', 'disease', 'waste of space',
+            'nobody likes you', 'everyone hates you', 'useless',
+            'failure', 'embarrassment', 'joke', 'clown',
+            'braindead', 'brainless', 'no brain',
+            
+            # Common Variations & Leetspeak
+            'fuk', 'fck', 'sh1t', 'b1tch', 'a$$', 'a55',
+            'fvck', 'phuck', 'shtty', 'sucks', 'suck',
+            'noob', 'n00b', 'scrub', 'bot', 'trash player',
+            
+            # Toxic Phrases
+            'go die', 'kill yourself', 'end yourself', 'rope yourself',
+            'get cancer', 'get aids', 'neck yourself', 'off yourself',
+            'delete yourself', 'uninstall life', 'your mom', 'yo mama',
+            'ez', 'get rekt', 'trash talk', 'git gud', 'cope',
+            'seethe', 'mald', 'ratio', 'cry about it', 'cope harder',
+            
+            # Additional Offensive Terms
+            'simp', 'incel', 'neckbeard', 'virgin', 'whore',
+            'slut', 'thot', 'hoe', 'prostitute', 'hooker',
+            'cunt', 'twat', 'prick', 'dick', 'cock',
+            'balls', 'deez nuts', 'ligma', 'bofa',
+            
+            # Discriminatory
+            'racist', 'sexist', 'homophobic', 'transphobic',
+            'bigot', 'supremacist', 'fascist', 'terrorist'
+        ]
+        
+        # Patterns for detecting leetspeak and variations
+        self.abusive_patterns = [
+            (r'k+[i1!]l+', 'kill variations'),
+            (r'f+[u*]+c+k+', 'fuck variations'),
+            (r's+h+[i1!]+t+', 'shit variations'),
+            (r'b+[i1!]+t+c+h+', 'bitch variations'),
+            (r'n+[i1!]+g+', 'n-word variations'),
+            (r'f+[a@]+g+', 'slur variations'),
+            (r'st[u*0]+p[i1!]+d+', 'stupid variations'),
+            (r'd[u*0]+m+b*', 'dumb variations'),
+            (r'[i1!]+d+[i1!]+[o0]+t+', 'idiot variations'),
+            (r'go+ d+[i1!]+e+', 'death threats'),
+            (r'kys+', 'suicide encouragement'),
+            (r'u+r+ d+[u0]+m+', 'ur dumb variations'),
         ]
         
     def analyze_message(self, content: str) -> Dict:
@@ -44,7 +103,7 @@ class AbuseDetector:
         blob = TextBlob(content)
         sentiment = blob.sentiment.polarity
         
-        # Keyword detection with word boundary matching to avoid false positives
+        # Keyword detection with word boundary matching
         detected_keywords = []
         for keyword in self.abusive_keywords:
             # Use word boundaries to match whole words only
@@ -52,26 +111,38 @@ class AbuseDetector:
             if re.search(pattern, content_lower):
                 detected_keywords.append(keyword)
         
+        # Pattern detection for leetspeak and variations
+        detected_patterns = []
+        for pattern, description in self.abusive_patterns:
+            if re.search(pattern, content_lower, re.IGNORECASE):
+                detected_patterns.append(description)
+                detected_keywords.append(description)  # Count patterns as keywords too
+        
         # Calculate abuse score
         keyword_score = len(detected_keywords) * self.KEYWORD_WEIGHT
         sentiment_score = abs(min(sentiment, 0))
         
         abuse_score = keyword_score + sentiment_score
         
-        # Classification
-        is_abusive = abuse_score > self.ABUSE_SCORE_THRESHOLD or sentiment < self.SENTIMENT_THRESHOLD
+        # Classification - More aggressive detection
+        is_abusive = (
+            abuse_score > self.ABUSE_SCORE_THRESHOLD or 
+            sentiment < self.SENTIMENT_THRESHOLD or
+            len(detected_keywords) > 0  # ANY keyword match = abusive
+        )
         
         severity = "low"
-        if abuse_score > 0.8:
+        if abuse_score > 0.8 or len(detected_keywords) >= 3:
             severity = "high"
-        elif abuse_score > 0.5:
+        elif abuse_score > 0.4 or len(detected_keywords) >= 2:
             severity = "medium"
         
         return {
             "is_abusive": is_abusive,
             "abuse_score": round(abuse_score, 3),
             "sentiment": round(sentiment, 3),
-            "detected_keywords": detected_keywords,
+            "detected_keywords": detected_keywords[:5],  # Limit display
+            "detected_patterns": detected_patterns,
             "severity": severity,
             "timestamp": datetime.utcnow().isoformat()
         }
@@ -84,6 +155,8 @@ class ForensicsLogger:
         self.log_dir = log_dir
         os.makedirs(log_dir, exist_ok=True)
         self.log_file = os.path.join(log_dir, "abuse_evidence.jsonl")
+        self.activity_log_file = os.path.join(log_dir, "activity_logs.jsonl")
+        self.mod_actions_file = os.path.join(log_dir, "mod_actions.jsonl")
         
     def log_evidence(self, message: discord.Message, analysis: Dict) -> None:
         """
@@ -110,6 +183,49 @@ class ForensicsLogger:
         # Append to JSONL file (one JSON object per line)
         with open(self.log_file, 'a', encoding='utf-8') as f:
             f.write(json.dumps(evidence, ensure_ascii=False) + '\n')
+    
+    def log_activity(self, activity_type: str, details: Dict) -> None:
+        """
+        Log general bot activities.
+        
+        Args:
+            activity_type: Type of activity (e.g., 'message_delete', 'member_join', 'channel_update')
+            details: Dictionary containing activity details
+        """
+        log_entry = {
+            "activity_type": activity_type,
+            "details": details,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        with open(self.activity_log_file, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+    
+    def log_mod_action(self, action: str, moderator: discord.User, target: discord.User, 
+                       reason: str, guild_id: str) -> None:
+        """
+        Log moderator actions.
+        
+        Args:
+            action: Type of moderation action
+            moderator: User who performed the action
+            target: User affected by the action
+            reason: Reason for the action
+            guild_id: Server ID where action occurred
+        """
+        log_entry = {
+            "action": action,
+            "moderator_id": str(moderator.id),
+            "moderator_name": str(moderator),
+            "target_id": str(target.id),
+            "target_name": str(target),
+            "reason": reason,
+            "guild_id": guild_id,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        with open(self.mod_actions_file, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
     
     def get_user_history(self, user_id: str, limit: int = 10) -> List[Dict]:
         """
@@ -178,7 +294,7 @@ class ForensicsLogger:
 
 
 class RespectRanger(commands.Bot):
-    """Main bot class for Respect Ranger."""
+    """Main bot class for Guardify - Sapphire-like Discord Bot."""
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -189,12 +305,303 @@ class RespectRanger(commands.Bot):
         self.spam_threshold = 5  # messages per 10 seconds
         self.caps_threshold = 0.7  # 70% caps in message
         self.user_messages = {}  # Track message timestamps for spam detection
+        
+        # Server configurations (saved per guild)
+        self.guild_configs = self.load_guild_configs()
+        
+        # Anti-raid protection
+        self.join_tracking = {}  # Track recent joins per guild
+        self.raid_mode = {}  # Track if guild is in raid mode
+        
+        # Verification system
+        self.pending_verifications = {}  # Users awaiting verification
+    
+    def load_guild_configs(self) -> Dict:
+        """Load guild-specific configurations."""
+        config_file = 'guild_configs.json'
+        if os.path.exists(config_file):
+            with open(config_file, 'r') as f:
+                return json.load(f)
+        return {}
+    
+    def save_guild_configs(self):
+        """Save guild configurations."""
+        with open('guild_configs.json', 'w') as f:
+            json.dump(self.guild_configs, f, indent=2)
+    
+    def get_guild_config(self, guild_id: str) -> Dict:
+        """Get config for specific guild with defaults."""
+        if guild_id not in self.guild_configs:
+            self.guild_configs[guild_id] = {
+                'welcome_channel': None,
+                'welcome_message': 'Welcome {user} to {server}! 🎉',
+                'goodbye_message': 'Goodbye {user}! We\'ll miss you. 👋',
+                'log_channel': None,
+                'mod_log_channel': None,
+                'verification_enabled': False,
+                'verification_role': None,
+                'verified_role': None,
+                'mute_role': None,
+                'autorole': None,
+                'anti_raid': True,
+                'raid_threshold': 5,  # joins per 10 seconds
+            }
+            self.save_guild_configs()
+        return self.guild_configs[guild_id]
     
     async def on_ready(self):
         """Called when the bot is ready."""
-        print(f'{self.user} has connected to Discord!')
-        print(f'Bot is active in {len(self.guilds)} guilds')
-        print(f'Auto-moderation enabled: Abuse detection, spam filter, caps filter')
+        print('=' * 60)
+        print(f'🛡️  {self.user} is now ONLINE!')
+        print('=' * 60)
+        print(f'📊 Active in {len(self.guilds)} servers')
+        print(f'👥 Protecting {sum(g.member_count for g in self.guilds)} members')
+        print(f'🤖 Auto-moderation: ENABLED')
+        print(f'🔒 Anti-raid protection: ENABLED')
+        print(f'📝 Activity logging: ENABLED')
+        print('=' * 60)
+        
+        # Set bot activity status
+        activity = discord.Activity(
+            type=discord.ActivityType.watching,
+            name=f"{len(self.guilds)} servers | !help_guardify"
+        )
+        await self.change_presence(activity=activity, status=discord.Status.online)
+        
+        # Log bot startup
+        self.forensics_logger.log_activity("bot_startup", {
+            "bot_name": str(self.user),
+            "guild_count": len(self.guilds),
+            "guilds": [{"id": str(g.id), "name": g.name} for g in self.guilds]
+        })
+    
+    async def on_member_join(self, member: discord.Member):
+        """Handle member joins with welcome, auto-role, verification, and anti-raid."""
+        guild_id = str(member.guild.id)
+        config = self.get_guild_config(guild_id)
+        
+        # Log join
+        self.forensics_logger.log_activity("member_join", {
+            "user_id": str(member.id),
+            "user_name": str(member),
+            "guild_id": guild_id,
+            "guild_name": member.guild.name,
+            "account_created": member.created_at.isoformat(),
+            "account_age_days": (datetime.utcnow() - member.created_at).days
+        })
+        print(f"[MEMBER JOIN] {member} joined {member.guild.name}")
+        
+        # Anti-raid detection
+        if config.get('anti_raid', True):
+            now = datetime.utcnow()
+            if guild_id not in self.join_tracking:
+                self.join_tracking[guild_id] = []
+            
+            # Clean old joins (older than 10 seconds)
+            self.join_tracking[guild_id] = [
+                join_time for join_time in self.join_tracking[guild_id]
+                if (now - join_time).total_seconds() < 10
+            ]
+            
+            self.join_tracking[guild_id].append(now)
+            
+            # Check for raid (multiple joins in short time)
+            raid_threshold = config.get('raid_threshold', 5)
+            if len(self.join_tracking[guild_id]) > raid_threshold:
+                if not self.raid_mode.get(guild_id, False):
+                    self.raid_mode[guild_id] = True
+                    print(f"[RAID DETECTED] {member.guild.name} - {len(self.join_tracking[guild_id])} joins in 10s")
+                    
+                    # Alert in log channel
+                    if config.get('log_channel'):
+                        try:
+                            log_channel = member.guild.get_channel(int(config['log_channel']))
+                            if log_channel:
+                                embed = discord.Embed(
+                                    title="🚨 RAID DETECTED",
+                                    description=f"Unusual join activity detected: {len(self.join_tracking[guild_id])} members joined in 10 seconds.",
+                                    color=discord.Color.red()
+                                )
+                                embed.add_field(name="Recommendation", value="Consider enabling verification or locking the server.", inline=False)
+                                await log_channel.send(embed=embed)
+                        except:
+                            pass
+        
+        # Check account age (new accounts might be suspicious)
+        account_age = (datetime.utcnow() - member.created_at).days
+        if account_age < 7 and config.get('log_channel'):
+            try:
+                log_channel = member.guild.get_channel(int(config['log_channel']))
+                if log_channel:
+                    embed = discord.Embed(
+                        title="⚠️ New Account Alert",
+                        description=f"{member.mention} joined with a new account.",
+                        color=discord.Color.orange()
+                    )
+                    embed.add_field(name="Account Age", value=f"{account_age} days", inline=True)
+                    embed.add_field(name="Created", value=member.created_at.strftime("%Y-%m-%d"), inline=True)
+                    embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+                    await log_channel.send(embed=embed)
+            except:
+                pass
+        
+        # Auto-role assignment
+        if config.get('autorole'):
+            try:
+                role = member.guild.get_role(int(config['autorole']))
+                if role:
+                    await member.add_roles(role, reason="Auto-role on join")
+            except:
+                pass
+        
+        # Verification system
+        if config.get('verification_enabled') and config.get('verification_role'):
+            try:
+                verify_role = member.guild.get_role(int(config['verification_role']))
+                if verify_role:
+                    await member.add_roles(verify_role, reason="Pending verification")
+                    self.pending_verifications[str(member.id)] = {
+                        'guild_id': guild_id,
+                        'joined_at': datetime.utcnow().isoformat()
+                    }
+                    
+                    # DM verification instructions
+                    try:
+                        embed = discord.Embed(
+                            title=f"Welcome to {member.guild.name}! 🛡️",
+                            description="Please verify yourself to access the server.",
+                            color=discord.Color.blue()
+                        )
+                        embed.add_field(name="How to Verify", value="Type `!verify` in the verification channel or DM me.", inline=False)
+                        await member.send(embed=embed)
+                    except:
+                        pass
+            except Exception as e:
+                print(f"[ERROR] Verification failed: {e}")
+        
+        # Send welcome message
+        if config.get('welcome_channel'):
+            try:
+                channel = member.guild.get_channel(int(config['welcome_channel']))
+                if channel:
+                    message = config.get('welcome_message', 'Welcome {user} to {server}! 🎉')
+                    message = message.replace('{user}', member.mention)
+                    message = message.replace('{server}', member.guild.name)
+                    message = message.replace('{count}', str(member.guild.member_count))
+                    
+                    embed = discord.Embed(
+                        description=message,
+                        color=discord.Color.green()
+                    )
+                    embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+                    embed.set_footer(text=f"Member #{member.guild.member_count}")
+                    await channel.send(embed=embed)
+            except Exception as e:
+                print(f"[ERROR] Welcome message failed: {e}")
+    
+    async def on_member_remove(self, member: discord.Member):
+        """Handle member leave with goodbye message and logging."""
+        guild_id = str(member.guild.id)
+        config = self.get_guild_config(guild_id)
+        
+        # Log leave
+        self.forensics_logger.log_activity("member_leave", {
+            "user_id": str(member.id),
+            "user_name": str(member),
+            "guild_id": guild_id,
+            "guild_name": member.guild.name,
+            "roles": [str(role.name) for role in member.roles if role.name != "@everyone"]
+        })
+        print(f"[MEMBER LEAVE] {member} left {member.guild.name}")
+        
+        # Send goodbye message
+        if config.get('welcome_channel'):
+            try:
+                channel = member.guild.get_channel(int(config['welcome_channel']))
+                if channel:
+                    message = config.get('goodbye_message', 'Goodbye {user}! We\'ll miss you. 👋')
+                    message = message.replace('{user}', str(member))
+                    message = message.replace('{server}', member.guild.name)
+                    
+                    embed = discord.Embed(
+                        description=message,
+                        color=discord.Color.red()
+                    )
+                    embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+                    await channel.send(embed=embed)
+            except Exception as e:
+                print(f"[ERROR] Goodbye message failed: {e}")
+        
+        # Remove from verification tracking if pending
+        if str(member.id) in self.pending_verifications:
+            del self.pending_verifications[str(member.id)]
+    
+    async def on_message_delete(self, message: discord.Message):
+        """Log when a message is deleted."""
+        if message.author == self.user or not message.guild:
+            return
+        
+        self.forensics_logger.log_activity("message_delete", {
+            "message_id": str(message.id),
+            "author_id": str(message.author.id),
+            "author_name": str(message.author),
+            "channel_id": str(message.channel.id),
+            "channel_name": str(message.channel),
+            "guild_id": str(message.guild.id),
+            "content": message.content[:500]
+        })
+    
+    async def on_message_edit(self, before: discord.Message, after: discord.Message):
+        """Log when a message is edited."""
+        if before.author == self.user or not before.guild or before.content == after.content:
+            return
+        
+        self.forensics_logger.log_activity("message_edit", {
+            "message_id": str(before.id),
+            "author_id": str(before.author.id),
+            "author_name": str(before.author),
+            "channel_id": str(before.channel.id),
+            "guild_id": str(before.guild.id),
+            "before_content": before.content[:500],
+            "after_content": after.content[:500]
+        })
+    
+    async def on_guild_channel_create(self, channel: discord.abc.GuildChannel):
+        """Log when a channel is created."""
+        self.forensics_logger.log_activity("channel_create", {
+            "channel_id": str(channel.id),
+            "channel_name": str(channel),
+            "channel_type": str(channel.type),
+            "guild_id": str(channel.guild.id)
+        })
+    
+    async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
+        """Log when a channel is deleted."""
+        self.forensics_logger.log_activity("channel_delete", {
+            "channel_id": str(channel.id),
+            "channel_name": str(channel),
+            "guild_id": str(channel.guild.id)
+        })
+    
+    async def on_member_ban(self, guild: discord.Guild, user: discord.User):
+        """Log when a member is banned."""
+        self.forensics_logger.log_activity("member_ban", {
+            "user_id": str(user.id),
+            "user_name": str(user),
+            "guild_id": str(guild.id),
+            "guild_name": guild.name
+        })
+        print(f"[BAN] {user} was banned from {guild.name}")
+    
+    async def on_member_unban(self, guild: discord.Guild, user: discord.User):
+        """Log when a member is unbanned."""
+        self.forensics_logger.log_activity("member_unban", {
+            "user_id": str(user.id),
+            "user_name": str(user),
+            "guild_id": str(guild.id),
+            "guild_name": guild.name
+        })
+        print(f"[UNBAN] {user} was unbanned from {guild.name}")
     
     def check_spam(self, user_id: int) -> bool:
         """Check if user is spamming."""
@@ -234,7 +641,15 @@ class RespectRanger(commands.Bot):
         if not message.guild:
             return
         
-        # Ignore messages from admins/moderators
+        # IMPORTANT: Analyze ALL messages first (before checking permissions)
+        # This logs abuse even from admins, but doesn't action on them
+        analysis = self.abuse_detector.analyze_message(message.content)
+        
+        # Debug logging - print EVERY message analysis
+        if len(message.content.strip()) > 0:
+            print(f"[ANALYZING] {message.author}: '{message.content[:50]}' | Abusive: {analysis['is_abusive']} | Score: {analysis['abuse_score']} | Keywords: {analysis['detected_keywords']}")
+        
+        # Ignore messages from admins/moderators (but still log them above)
         if message.author.guild_permissions.administrator or message.author.guild_permissions.manage_messages:
             await self.process_commands(message)
             return
@@ -253,9 +668,10 @@ class RespectRanger(commands.Bot):
                 
                 # Timeout for 2 minutes for spamming
                 await message.author.timeout(timedelta(minutes=2), reason="Auto-mod: Spamming")
+                print(f"[SPAM] {message.author} timed out for spamming")
                 return
-            except:
-                pass
+            except Exception as e:
+                print(f"[ERROR] Spam action failed: {e}")
         
         # Check for excessive caps
         if self.check_excessive_caps(message.content):
@@ -269,17 +685,14 @@ class RespectRanger(commands.Bot):
                 warning_msg = await message.channel.send(embed=embed)
                 await warning_msg.delete(delay=5)
                 return
-            except:
-                pass
+            except Exception as e:
+                print(f"[ERROR] Caps filter action failed: {e}")
         
-        # Analyze message for abusive content
-        analysis = self.abuse_detector.analyze_message(message.content)
-        
-        # Auto-moderation for abusive content
+        # Auto-moderation for abusive content (analysis already done above)
         if analysis['is_abusive']:
             self.forensics_logger.log_evidence(message, analysis)
             print(f"[ABUSE DETECTED] {message.author}: {message.content[:50]}... "
-                  f"(Score: {analysis['abuse_score']}, Severity: {analysis['severity']})")
+                  f"(Score: {analysis['abuse_score']}, Severity: {analysis['severity']}, Keywords: {analysis['detected_keywords']})")
             
             try:
                 # Delete the abusive message
@@ -470,6 +883,10 @@ async def kick(ctx, member: discord.Member, *, reason: str = "No reason provided
     """
     try:
         await member.kick(reason=f"{reason} | Kicked by {ctx.author}")
+        
+        # Log the action
+        bot.forensics_logger.log_mod_action("kick", ctx.author, member, reason, str(ctx.guild.id))
+        
         embed = discord.Embed(
             title="Member Kicked",
             description=f"{member.mention} has been kicked from the server.",
@@ -478,6 +895,7 @@ async def kick(ctx, member: discord.Member, *, reason: str = "No reason provided
         embed.add_field(name="Reason", value=reason, inline=False)
         embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
         await ctx.send(embed=embed)
+        print(f"[MOD ACTION] {ctx.author} kicked {member} | Reason: {reason}")
     except discord.Forbidden:
         await ctx.send("❌ I don't have permission to kick this member!")
     except Exception as e:
@@ -493,6 +911,10 @@ async def ban(ctx, member: discord.Member, *, reason: str = "No reason provided"
     """
     try:
         await member.ban(reason=f"{reason} | Banned by {ctx.author}", delete_message_days=1)
+        
+        # Log the action
+        bot.forensics_logger.log_mod_action("ban", ctx.author, member, reason, str(ctx.guild.id))
+        
         embed = discord.Embed(
             title="Member Banned",
             description=f"{member.mention} has been banned from the server.",
@@ -501,6 +923,7 @@ async def ban(ctx, member: discord.Member, *, reason: str = "No reason provided"
         embed.add_field(name="Reason", value=reason, inline=False)
         embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
         await ctx.send(embed=embed)
+        print(f"[MOD ACTION] {ctx.author} banned {member} | Reason: {reason}")
     except discord.Forbidden:
         await ctx.send("❌ I don't have permission to ban this member!")
     except Exception as e:
@@ -517,6 +940,10 @@ async def unban(ctx, user_id: int, *, reason: str = "No reason provided"):
     try:
         user = await bot.fetch_user(user_id)
         await ctx.guild.unban(user, reason=f"{reason} | Unbanned by {ctx.author}")
+        
+        # Log the action
+        bot.forensics_logger.log_mod_action("unban", ctx.author, user, reason, str(ctx.guild.id))
+        
         embed = discord.Embed(
             title="Member Unbanned",
             description=f"{user.mention} has been unbanned from the server.",
@@ -525,6 +952,7 @@ async def unban(ctx, user_id: int, *, reason: str = "No reason provided"):
         embed.add_field(name="Reason", value=reason, inline=False)
         embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
         await ctx.send(embed=embed)
+        print(f"[MOD ACTION] {ctx.author} unbanned {user} | Reason: {reason}")
     except discord.NotFound:
         await ctx.send("❌ User not found or not banned!")
     except Exception as e:
@@ -540,6 +968,10 @@ async def timeout(ctx, member: discord.Member, duration: int, *, reason: str = "
     """
     try:
         await member.timeout(timedelta(minutes=duration), reason=f"{reason} | Timeout by {ctx.author}")
+        
+        # Log the action
+        bot.forensics_logger.log_mod_action("timeout", ctx.author, member, f"{duration}min - {reason}", str(ctx.guild.id))
+        
         embed = discord.Embed(
             title="Member Timed Out",
             description=f"{member.mention} has been timed out for {duration} minutes.",
@@ -548,6 +980,7 @@ async def timeout(ctx, member: discord.Member, duration: int, *, reason: str = "
         embed.add_field(name="Reason", value=reason, inline=False)
         embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
         await ctx.send(embed=embed)
+        print(f"[MOD ACTION] {ctx.author} timed out {member} for {duration}min | Reason: {reason}")
     except discord.Forbidden:
         await ctx.send("❌ I don't have permission to timeout this member!")
     except Exception as e:
@@ -603,6 +1036,10 @@ async def warn(ctx, member: discord.Member, *, reason: str = "No reason provided
     # Save warnings
     with open(warnings_file, 'w') as f:
         json.dump(warnings, f, indent=2)
+    
+    # Log the action
+    bot.forensics_logger.log_mod_action("warn", ctx.author, member, reason, str(ctx.guild.id))
+    print(f"[MOD ACTION] {ctx.author} warned {member} | Reason: {reason}")
     
     # Send warning message
     embed = discord.Embed(
@@ -858,56 +1295,432 @@ async def help_command(ctx):
     Usage: !help_guardify
     """
     embed = discord.Embed(
-        title="Guardify - Help",
-        description="AI-enabled Discord bot with advanced auto-moderation",
+        title="Guardify - Complete Command Guide",
+        description="Sapphire-like Discord bot with advanced moderation\nUse `!setup` for server configuration wizard",
         color=discord.Color.purple()
     )
     
     embed.add_field(
-        name="🤖 Auto-Moderation (Always Active)",
-        value="✅ **Abusive Language** - Auto-delete & warn\n✅ **Spam Detection** - Auto-timeout 2min\n✅ **Excessive Caps** - Auto-delete message\n✅ **5 Warnings = 10min Timeout**",
+        name="🔧 Server Setup (Admin)",
+        value="`!setup` - Setup wizard\n`!config` - View config\n`!setwelcome #channel` - Welcome channel\n`!setlog #channel` - Log channel",
         inline=False
     )
     
     embed.add_field(
-        name="📋 Abuse Detection",
-        value="`!scan <message>` - Manually scan text\n`!history @user` - View abuse history\n`!stats` - Detection statistics",
+        name="📢 Welcome & Messages",
+        value="`!welcomemsg <text>` - Set welcome message\n`!goodbyemsg <text>` - Set goodbye message",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="✅ Verification & Roles",
+        value="`!setupverify` - Enable verification\n`!verify` - Verify yourself\n`!autorole @role` - Set auto-role",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🔒 Anti-Raid",
+        value="`!antiraid on/off` - Toggle protection\n`!raidthreshold <n>` - Set sensitivity",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🤖 Auto-Moderation (Active)",
+        value="✅ Abusive language detection\n✅ Spam protection\n✅ Caps filter\n✅ Auto-warnings & timeouts",
         inline=False
     )
     
     embed.add_field(
         name="🔨 Moderation",
-        value="`!kick @user [reason]` - Kick member\n`!ban @user [reason]` - Ban member\n`!unban <id> [reason]` - Unban user\n`!timeout @user <min> [reason]` - Timeout member\n`!untimeout @user` - Remove timeout",
+        value="`!kick` `!ban` `!unban` `!mute` `!unmute`\n`!timeout` `!warn` `!purge` `!nick` `!role`",
         inline=False
     )
     
     embed.add_field(
-        name="⚠️ Warnings",
-        value="`!warn @user [reason]` - Warn member\n`!warnings @user` - Check warnings\n`!clearwarnings @user` - Clear all warnings (Admin)",
+        name="🧹 Channel Tools",
+        value="`!clear` `!slowmode` `!lock` `!unlock`",
         inline=False
     )
     
     embed.add_field(
-        name="🧹 Channel Management",
-        value="`!clear [amount]` - Delete messages\n`!slowmode <sec>` - Set slowmode\n`!lock` - Lock channel\n`!unlock` - Unlock channel",
+        name="📊 Info & Stats",
+        value="`!scan` `!history` `!stats` `!warnings`\n`!serverinfo` `!userinfo` `!automod`",
         inline=False
     )
     
-    embed.add_field(
-        name="⚙️ Settings",
-        value="`!automod` - View auto-mod settings\n`!automod <setting> <value>` - Change settings (Admin)",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="📊 Information",
-        value="`!serverinfo` - Server details\n`!userinfo [@user]` - User details",
-        inline=False
-    )
-    
-    embed.set_footer(text="Use !help_guardify to see this message again")
+    embed.set_footer(text="Guardify • Protecting your server 24/7")
     
     await ctx.send(embed=embed)
+
+
+# ==================== SAPPHIRE-LIKE FEATURES ====================
+
+@bot.command(name='setup')
+@commands.has_permissions(administrator=True)
+async def setup_server(ctx):
+    """
+    Interactive server setup wizard (Sapphire-style).
+    Usage: !setup
+    """
+    embed = discord.Embed(
+        title="🛡️ Guardify Server Setup Wizard",
+        description="Let's configure your server! Use the commands below to set up features.",
+        color=discord.Color.blue()
+    )
+    
+    embed.add_field(
+        name="📢 Welcome System",
+        value="`!setwelcome #channel` - Set welcome/goodbye channel\n"
+              "`!welcomemsg <message>` - Customize welcome message\n"
+              "`!goodbyemsg <message>` - Customize goodbye message",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="📋 Logging",
+        value="`!setlog #channel` - Set general log channel\n"
+              "`!setmodlog #channel` - Set mod action log channel",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="✅ Verification System",
+        value="`!setupverify` - Enable verification system\n"
+              "`!verify` - Verify a member (users use this)",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🎭 Auto-Role",
+        value="`!autorole @role` - Set role to give on join\n"
+              "`!autorole none` - Disable auto-role",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🔒 Anti-Raid",
+        value="`!antiraid <on/off>` - Toggle anti-raid protection\n"
+              "`!raidthreshold <number>` - Set raid detection sensitivity",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="Variables",
+        value="`{user}` - Mentions user\n`{server}` - Server name\n`{count}` - Member count",
+        inline=False
+    )
+    
+    await ctx.send(embed=embed)
+
+
+@bot.command(name='setwelcome')
+@commands.has_permissions(administrator=True)
+async def set_welcome_channel(ctx, channel: discord.TextChannel):
+    """Set welcome/goodbye message channel."""
+    guild_id = str(ctx.guild.id)
+    config = bot.get_guild_config(guild_id)
+    config['welcome_channel'] = str(channel.id)
+    bot.save_guild_configs()
+    await ctx.send(f"✅ Welcome channel set to {channel.mention}")
+
+
+@bot.command(name='welcomemsg')
+@commands.has_permissions(administrator=True)
+async def set_welcome_message(ctx, *, message: str):
+    """Set custom welcome message."""
+    guild_id = str(ctx.guild.id)
+    config = bot.get_guild_config(guild_id)
+    config['welcome_message'] = message
+    bot.save_guild_configs()
+    
+    preview = message.replace('{user}', ctx.author.mention).replace('{server}', ctx.guild.name).replace('{count}', str(ctx.guild.member_count))
+    embed = discord.Embed(title="✅ Welcome Message Updated", description="Preview:", color=discord.Color.green())
+    embed.add_field(name="Message", value=preview, inline=False)
+    await ctx.send(embed=embed)
+
+
+@bot.command(name='goodbyemsg')
+@commands.has_permissions(administrator=True)
+async def set_goodbye_message(ctx, *, message: str):
+    """Set custom goodbye message."""
+    guild_id = str(ctx.guild.id)
+    config = bot.get_guild_config(guild_id)
+    config['goodbye_message'] = message
+    bot.save_guild_configs()
+    await ctx.send(f"✅ Goodbye message updated!")
+
+
+@bot.command(name='setlog')
+@commands.has_permissions(administrator=True)
+async def set_log_channel(ctx, channel: discord.TextChannel):
+    """Set general log channel."""
+    guild_id = str(ctx.guild.id)
+    config = bot.get_guild_config(guild_id)
+    config['log_channel'] = str(channel.id)
+    bot.save_guild_configs()
+    
+    embed = discord.Embed(title="✅ Log Channel Set", description=f"General logs will be sent to {channel.mention}", color=discord.Color.blue())
+    embed.add_field(name="What gets logged?", value="• Member joins (with account age check)\n• Member leaves\n• Message edits/deletes\n• Anti-raid alerts", inline=False)
+    await ctx.send(embed=embed)
+
+
+@bot.command(name='setmodlog')
+@commands.has_permissions(administrator=True)
+async def set_modlog_channel(ctx, channel: discord.TextChannel):
+    """Set moderator action log channel."""
+    guild_id = str(ctx.guild.id)
+    config = bot.get_guild_config(guild_id)
+    config['mod_log_channel'] = str(channel.id)
+    bot.save_guild_configs()
+    await ctx.send(f"✅ Mod log channel set to {channel.mention}\nAll kicks, bans, warnings, and timeouts will be logged here.")
+
+
+@bot.command(name='setupverify')
+@commands.has_permissions(administrator=True)
+async def setup_verification(ctx):
+    """Set up verification system."""
+    guild_id = str(ctx.guild.id)
+    config = bot.get_guild_config(guild_id)
+    
+    verify_role = discord.utils.get(ctx.guild.roles, name="Unverified")
+    if not verify_role:
+        verify_role = await ctx.guild.create_role(name="Unverified", color=discord.Color.light_gray(), reason="Verification system setup")
+    
+    verified_role = discord.utils.get(ctx.guild.roles, name="Verified")
+    if not verified_role:
+        verified_role = await ctx.guild.create_role(name="Verified", color=discord.Color.green(), reason="Verification system setup")
+    
+    config['verification_enabled'] = True
+    config['verification_role'] = str(verify_role.id)
+    config['verified_role'] = str(verified_role.id)
+    bot.save_guild_configs()
+    
+    embed = discord.Embed(title="✅ Verification System Enabled", description="New members will need to verify before accessing the server.", color=discord.Color.green())
+    embed.add_field(name="Unverified Role", value=verify_role.mention, inline=True)
+    embed.add_field(name="Verified Role", value=verified_role.mention, inline=True)
+    embed.add_field(name="⚠️ Important", value="Make sure to configure channel permissions so Unverified members can only see a verification channel!", inline=False)
+    embed.add_field(name="How Members Verify", value="New members type `!verify` in the verification channel or DM the bot.", inline=False)
+    await ctx.send(embed=embed)
+
+
+@bot.command(name='verify')
+async def verify_member(ctx):
+    """Verify yourself to access the server."""
+    guild = ctx.guild if ctx.guild else None
+    
+    if not guild:
+        user_id = str(ctx.author.id)
+        if user_id in bot.pending_verifications:
+            guild_id = bot.pending_verifications[user_id]['guild_id']
+            guild = bot.get_guild(int(guild_id))
+        else:
+            await ctx.send("❌ You don't have any pending verifications.")
+            return
+    
+    guild_id = str(guild.id)
+    config = bot.get_guild_config(guild_id)
+    
+    if not config.get('verification_enabled'):
+        await ctx.send("❌ Verification is not enabled on this server.")
+        return
+    
+    member = guild.get_member(ctx.author.id)
+    if not member:
+        await ctx.send("❌ You're not in the server.")
+        return
+    
+    verify_role = guild.get_role(int(config['verification_role'])) if config.get('verification_role') else None
+    verified_role = guild.get_role(int(config['verified_role'])) if config.get('verified_role') else None
+    
+    if verify_role in member.roles:
+        try:
+            await member.remove_roles(verify_role, reason="User verified")
+            if verified_role:
+                await member.add_roles(verified_role, reason="User verified")
+            
+            if str(ctx.author.id) in bot.pending_verifications:
+                del bot.pending_verifications[str(ctx.author.id)]
+            
+            embed = discord.Embed(title="✅ Verification Successful!", description=f"Welcome to {guild.name}! You now have access to all channels.", color=discord.Color.green())
+            await ctx.send(embed=embed)
+        except Exception as e:
+            await ctx.send(f"❌ Error: {str(e)}")
+    else:
+        await ctx.send("❌ You're already verified or don't need verification!")
+
+
+@bot.command(name='autorole')
+@commands.has_permissions(administrator=True)
+async def set_autorole(ctx, role: discord.Role = None):
+    """Set role to automatically give to new members."""
+    guild_id = str(ctx.guild.id)
+    config = bot.get_guild_config(guild_id)
+    
+    if role:
+        config['autorole'] = str(role.id)
+        bot.save_guild_configs()
+        await ctx.send(f"✅ Auto-role set to {role.mention}. New members will automatically receive this role.")
+    else:
+        config['autorole'] = None
+        bot.save_guild_configs()
+        await ctx.send("✅ Auto-role disabled.")
+
+
+@bot.command(name='antiraid')
+@commands.has_permissions(administrator=True)
+async def toggle_antiraid(ctx, status: str):
+    """Toggle anti-raid protection."""
+    guild_id = str(ctx.guild.id)
+    config = bot.get_guild_config(guild_id)
+    
+    if status.lower() in ['on', 'enable', 'true']:
+        config['anti_raid'] = True
+        bot.save_guild_configs()
+        await ctx.send("✅ Anti-raid protection ENABLED. The bot will alert you if multiple accounts join rapidly.")
+    elif status.lower() in ['off', 'disable', 'false']:
+        config['anti_raid'] = False
+        bot.save_guild_configs()
+        bot.raid_mode[guild_id] = False
+        await ctx.send("✅ Anti-raid protection DISABLED.")
+    else:
+        await ctx.send("❌ Usage: `!antiraid on` or `!antiraid off`")
+
+
+@bot.command(name='raidthreshold')
+@commands.has_permissions(administrator=True)
+async def set_raid_threshold(ctx, number: int):
+    """Set how many joins in 10 seconds triggers raid alert."""
+    guild_id = str(ctx.guild.id)
+    config = bot.get_guild_config(guild_id)
+    
+    if number < 3:
+        await ctx.send("❌ Threshold must be at least 3.")
+        return
+    
+    config['raid_threshold'] = number
+    bot.save_guild_configs()
+    await ctx.send(f"✅ Raid threshold set to {number} joins per 10 seconds.")
+
+
+@bot.command(name='mute')
+@commands.has_permissions(moderate_members=True)
+async def mute_member(ctx, member: discord.Member, duration: int = None, *, reason: str = "No reason provided"):
+    """Mute a member."""
+    if duration is None:
+        duration = 10
+    
+    try:
+        await member.timeout(timedelta(minutes=duration), reason=f"{reason} | Muted by {ctx.author}")
+        bot.forensics_logger.log_mod_action("mute", ctx.author, member, f"{duration}min - {reason}", str(ctx.guild.id))
+        
+        embed = discord.Embed(title="🔇 Member Muted", description=f"{member.mention} has been muted for {duration} minutes.", color=discord.Color.orange())
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
+        await ctx.send(embed=embed)
+        print(f"[MOD ACTION] {ctx.author} muted {member} for {duration}min | Reason: {reason}")
+    except discord.Forbidden:
+        await ctx.send("❌ I don't have permission to mute this member!")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='unmute')
+@commands.has_permissions(moderate_members=True)
+async def unmute_member(ctx, member: discord.Member):
+    """Unmute a member."""
+    try:
+        await member.timeout(None, reason=f"Unmuted by {ctx.author}")
+        embed = discord.Embed(title="🔊 Member Unmuted", description=f"{member.mention} can now speak again.", color=discord.Color.green())
+        await ctx.send(embed=embed)
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='purge')
+@commands.has_permissions(manage_messages=True)
+async def purge_messages(ctx, amount: int, member: discord.Member = None):
+    """Bulk delete messages."""
+    if amount > 100:
+        amount = 100
+    
+    try:
+        if member:
+            deleted = await ctx.channel.purge(limit=amount + 1, check=lambda m: m.author == member)
+            msg = await ctx.send(f"✅ Deleted {len(deleted) - 1} messages from {member.mention}.")
+        else:
+            deleted = await ctx.channel.purge(limit=amount + 1)
+            msg = await ctx.send(f"✅ Deleted {len(deleted) - 1} messages.")
+        await msg.delete(delay=3)
+    except discord.Forbidden:
+        await ctx.send("❌ I don't have permission to delete messages!")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='nick')
+@commands.has_permissions(manage_nicknames=True)
+async def change_nickname(ctx, member: discord.Member, *, nickname: str = None):
+    """Change a member's nickname."""
+    try:
+        await member.edit(nick=nickname, reason=f"Changed by {ctx.author}")
+        if nickname:
+            await ctx.send(f"✅ Changed nickname of {member.mention} to **{nickname}**")
+        else:
+            await ctx.send(f"✅ Reset nickname of {member.mention}")
+    except discord.Forbidden:
+        await ctx.send("❌ I don't have permission to change this member's nickname!")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='role')
+@commands.has_permissions(manage_roles=True)
+async def manage_role(ctx, member: discord.Member, role: discord.Role):
+    """Add or remove a role from a member."""
+    try:
+        if role in member.roles:
+            await member.remove_roles(role, reason=f"Removed by {ctx.author}")
+            await ctx.send(f"✅ Removed {role.mention} from {member.mention}")
+        else:
+            await member.add_roles(role, reason=f"Added by {ctx.author}")
+            await ctx.send(f"✅ Added {role.mention} to {member.mention}")
+    except discord.Forbidden:
+        await ctx.send("❌ I don't have permission to manage this role!")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='config')
+@commands.has_permissions(administrator=True)
+async def view_config(ctx):
+    """View current server configuration."""
+    guild_id = str(ctx.guild.id)
+    config = bot.get_guild_config(guild_id)
+    
+    embed = discord.Embed(title=f"⚙️ {ctx.guild.name} Configuration", color=discord.Color.blue())
+    
+    welcome_ch = ctx.guild.get_channel(int(config['welcome_channel'])) if config.get('welcome_channel') else None
+    embed.add_field(name="📢 Welcome System", value=f"Channel: {welcome_ch.mention if welcome_ch else 'Not set'}\nMessage: `{config.get('welcome_message', 'Default')[:50]}...`", inline=False)
+    
+    log_ch = ctx.guild.get_channel(int(config['log_channel'])) if config.get('log_channel') else None
+    modlog_ch = ctx.guild.get_channel(int(config['mod_log_channel'])) if config.get('mod_log_channel') else None
+    embed.add_field(name="📋 Logging", value=f"General Log: {log_ch.mention if log_ch else 'Not set'}\nMod Log: {modlog_ch.mention if modlog_ch else 'Not set'}", inline=False)
+    
+    verify_enabled = "✅ Enabled" if config.get('verification_enabled') else "❌ Disabled"
+    embed.add_field(name="✅ Verification", value=verify_enabled, inline=True)
+    
+    antiraid_status = "✅ Enabled" if config.get('anti_raid', True) else "❌ Disabled"
+    raid_threshold = config.get('raid_threshold', 5)
+    embed.add_field(name="🔒 Anti-Raid", value=f"{antiraid_status} ({raid_threshold} joins/10s)", inline=True)
+    
+    autorole = ctx.guild.get_role(int(config['autorole'])) if config.get('autorole') else None
+    embed.add_field(name="🎭 Auto-Role", value=autorole.mention if autorole else "Not set", inline=True)
+    
+    embed.set_footer(text="Use !setup for configuration help")
+    await ctx.send(embed=embed)
+
+
+# ==================== END SAPPHIRE-LIKE FEATURES ====================
 
 
 # Simple web server for Render.com (keeps service alive)
