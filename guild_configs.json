@@ -1,0 +1,16 @@
+{
+  "1458801350292017164": {
+    "welcome_channel": null,
+    "welcome_message": "Welcome {user} to {server}! \ud83c\udf89",
+    "goodbye_message": "Goodbye {user}! We'll miss you. \ud83d\udc4b",
+    "log_channel": "1469171020467540131",
+    "mod_log_channel": null,
+    "verification_enabled": false,
+    "verification_role": null,
+    "verified_role": null,
+    "mute_role": null,
+    "autorole": null,
+    "anti_raid": true,
+    "raid_threshold": 5
+  }
+}

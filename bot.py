@@ -641,18 +641,15 @@ class RespectRanger(commands.Bot):
         if not message.guild:
             return
         
-        # IMPORTANT: Analyze ALL messages first (before checking permissions)
-        # This logs abuse even from admins, but doesn't action on them
+        # IMPORTANT: Analyze ALL messages first
         analysis = self.abuse_detector.analyze_message(message.content)
         
         # Debug logging - print EVERY message analysis
         if len(message.content.strip()) > 0:
             print(f"[ANALYZING] {message.author}: '{message.content[:50]}' | Abusive: {analysis['is_abusive']} | Score: {analysis['abuse_score']} | Keywords: {analysis['detected_keywords']}")
         
-        # Ignore messages from admins/moderators (but still log them above)
-        if message.author.guild_permissions.administrator or message.author.guild_permissions.manage_messages:
-            await self.process_commands(message)
-            return
+        # Check for commands first - but still apply auto-mod after
+        # (Commands will be processed at the end)
         
         # Check for spam
         if self.check_spam(message.author.id):
