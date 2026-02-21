@@ -1,6 +1,7 @@
 """
 Respect Ranger Discord Bot
 AI-enabled bot for detecting and logging abusive content in Discord messages.
+Enhanced with multilingual content detection and automatic warning/mute system.
 """
 
 import discord
@@ -13,6 +14,11 @@ import re
 from typing import Dict, List, Optional
 from threading import Thread
 from flask import Flask
+import asyncio
+
+# Import new content detection and warning systems
+from content_detector import get_content_detector
+from warning_system import get_warning_manager, get_mute_role_manager
 
 
 class AbuseDetector:
@@ -301,6 +307,11 @@ class RespectRanger(commands.Bot):
         self.abuse_detector = AbuseDetector()
         self.forensics_logger = ForensicsLogger()
         
+        # Initialize new content detection and warning systems
+        self.content_detector = get_content_detector()
+        self.warning_manager = get_warning_manager()
+        self.mute_role_manager = get_mute_role_manager()
+        
         # Auto-mod settings
         self.spam_threshold = 5  # messages per 10 seconds
         self.caps_threshold = 0.7  # 70% caps in message
@@ -315,6 +326,9 @@ class RespectRanger(commands.Bot):
         
         # Verification system
         self.pending_verifications = {}  # Users awaiting verification
+        
+        # Unmute scheduler - stores tasks for users to be unmuted
+        self.unmute_tasks = {}  # format: {guild_id:user_id: asyncio.Task}
     
     def load_guild_configs(self) -> Dict:
         """Load guild-specific configurations."""
@@ -641,15 +655,22 @@ class RespectRanger(commands.Bot):
         if not message.guild:
             return
         
-        # IMPORTANT: Analyze ALL messages first
-        analysis = self.abuse_detector.analyze_message(message.content)
+        # Skip empty messages
+        if len(message.content.strip()) == 0:
+            await self.process_commands(message)
+            return
         
-        # Debug logging - print EVERY message analysis
-        if len(message.content.strip()) > 0:
-            print(f"[ANALYZING] {message.author}: '{message.content[:50]}' | Abusive: {analysis['is_abusive']} | Score: {analysis['abuse_score']} | Keywords: {analysis['detected_keywords']}")
+        guild_id = str(message.guild.id)
+        user_id = str(message.author.id)
         
-        # Check for commands first - but still apply auto-mod after
-        # (Commands will be processed at the end)
+        # ===== ENHANCED CONTENT DETECTION =====
+        # Use the new multilingual content detector
+        advanced_analysis = self.content_detector.analyze_content(message.content)
+        
+        print(f"[MESSAGE SCAN] {message.author} in {message.guild.name}: '{message.content[:60]}' "
+              f"| Offensive: {advanced_analysis['is_offensive']} | "
+              f"Category: {advanced_analysis['category']} | "
+              f"Severity: {advanced_analysis['severity']:.2f}")
         
         # Check for spam
         if self.check_spam(message.author.id):
@@ -685,89 +706,205 @@ class RespectRanger(commands.Bot):
             except Exception as e:
                 print(f"[ERROR] Caps filter action failed: {e}")
         
-        # Auto-moderation for abusive content (analysis already done above)
-        if analysis['is_abusive']:
-            self.forensics_logger.log_evidence(message, analysis)
-            print(f"[ABUSE DETECTED] {message.author}: {message.content[:50]}... "
-                  f"(Score: {analysis['abuse_score']}, Severity: {analysis['severity']}, Keywords: {analysis['detected_keywords']})")
+        # ===== ENHANCED ABUSE MODERATION =====
+        if advanced_analysis['is_offensive']:
+            # Log evidence with new system
+            self.forensics_logger.log_evidence(message, {
+                "is_abusive": True,
+                "abuse_score": advanced_analysis['severity'],
+                "sentiment": 0.0,
+                "detected_keywords": advanced_analysis['detected_content'],
+                "detected_patterns": advanced_analysis['pattern_matches'],
+                "severity": self.content_detector.get_severity_level(advanced_analysis['severity']),
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            print(f"[OFFENSIVE CONTENT DETECTED] {message.author}: {message.content[:60]}... "
+                  f"Category: {advanced_analysis['category']} | "
+                  f"Severity: {advanced_analysis['severity']:.2f} | "
+                  f"Detected: {advanced_analysis['detected_content']}")
             
             try:
-                # Delete the abusive message
+                # Delete the offensive message
                 await message.delete()
                 
-                # Load warnings
-                warnings_file = os.path.join(self.forensics_logger.log_dir, "warnings.json")
-                warnings = {}
-                if os.path.exists(warnings_file):
-                    with open(warnings_file, 'r') as f:
-                        warnings = json.load(f)
+                # Add warning via warning manager
+                warning_count = self.warning_manager.add_warning(
+                    user_id=user_id,
+                    guild_id=guild_id,
+                    reason=f"{advanced_analysis['category'].upper()} detected ({advanced_analysis['detected_content']})",
+                    severity=self.content_detector.get_severity_level(advanced_analysis['severity']),
+                    content=message.content[:200]
+                )
                 
-                # Add automatic warning
-                user_id = str(message.author.id)
-                if user_id not in warnings:
-                    warnings[user_id] = []
+                print(f"[WARNING ADDED] {message.author} now has {warning_count}/5 warnings in {message.guild.name}")
                 
-                warnings[user_id].append({
-                    "warned_by": "AUTO-MOD",
-                    "warned_by_name": "Guardify Auto-Moderation",
-                    "reason": f"Abusive language detected ({analysis['severity']} severity)",
-                    "message_content": message.content[:100],
-                    "timestamp": datetime.utcnow().isoformat()
-                })
-                
-                # Save warnings
-                with open(warnings_file, 'w') as f:
-                    json.dump(warnings, f, indent=2)
-                
-                warning_count = len(warnings[user_id])
-                
-                # Send warning message in channel
+                # Create warning embed
                 embed = discord.Embed(
-                    title="⚠️ Abusive Content Detected",
-                    description=f"{message.author.mention}, your message was removed for violating community guidelines.",
+                    title="⚠️ Offensive Content Removed",
+                    description=f"{message.author.mention}, your message violated community guidelines.",
                     color=discord.Color.orange()
                 )
-                embed.add_field(name="Reason", value=f"Abusive language ({analysis['severity']} severity)", inline=False)
-                embed.add_field(name="Total Warnings", value=f"{warning_count}/5", inline=True)
+                embed.add_field(name="Category", value=advanced_analysis['category'].upper(), inline=True)
+                embed.add_field(name="Severity", value=self.content_detector.get_severity_level(advanced_analysis['severity']), inline=True)
+                embed.add_field(name="Warnings", value=f"**{warning_count}/5**", inline=False)
                 
-                # Auto-timeout after 5 warnings
+                # Check if user should be muted (5 warnings = auto-mute)
                 if warning_count >= 5:
+                    # Create mute record
+                    mute_record = self.warning_manager.create_mute(user_id, guild_id, duration_minutes=10,
+                                                                   reason="Auto-mod: 5 warnings reached")
+                    
                     try:
+                        # Try to apply timeout via Discord timeout feature
                         await message.author.timeout(timedelta(minutes=10), reason="Auto-mod: 5 warnings reached")
-                        embed.add_field(name="Action Taken", value="🔇 Timed out for 10 minutes (5 warnings)", inline=False)
                         embed.color = discord.Color.red()
+                        embed.add_field(name="⚠️ AUTO-MUTE", value="🔇 Muted for 10 minutes (reached 5 warnings)", inline=False)
+                        
+                        # Try to assign mute role if configured
+                        await self._assign_mute_role(message.guild, message.author, guild_id)
+                        
+                        # Schedule unmute task
+                        await self._schedule_unmute(message.guild, message.author, guild_id, 10)
+                        
+                        print(f"[AUTO-MUTE] {message.author} muted for 10 minutes (5 warnings)")
+                        
                     except discord.Forbidden:
-                        embed.add_field(name="Note", value="⚠️ Unable to timeout user (insufficient permissions)", inline=False)
+                        embed.add_field(name="Note", value="⚠️ Unable to mute user (insufficient permissions)", inline=False)
+                        print(f"[ERROR] Cannot mute {message.author} - missing permissions")
+                    except Exception as e:
+                        print(f"[ERROR] Auto-mute failed: {e}")
                 else:
-                    embed.add_field(name="Warning", value=f"You will be timed out after 5 warnings ({5-warning_count} remaining)", inline=False)
+                    remaining = 5 - warning_count
+                    embed.add_field(name="⚠️ Warning", 
+                                  value=f"You will be muted after {remaining} more warning(s)", 
+                                  inline=False)
                 
-                warning_msg = await message.channel.send(embed=embed)
-                # Delete warning message after 10 seconds
-                await warning_msg.delete(delay=10)
+                # Send warning message in channel (auto-delete after 15 seconds)
+                try:
+                    warning_msg = await message.channel.send(embed=embed)
+                    await warning_msg.delete(delay=15)
+                except discord.Forbidden:
+                    print(f"[ERROR] Cannot send warning message - missing permissions")
                 
                 # Try to DM the user
                 try:
                     dm_embed = discord.Embed(
                         title="⚠️ Community Guidelines Violation",
-                        description=f"Your message in {message.guild.name} was removed.",
+                        description=f"Your message in **{message.guild.name}** was removed.",
                         color=discord.Color.red()
                     )
-                    dm_embed.add_field(name="Message", value=message.content[:500], inline=False)
-                    dm_embed.add_field(name="Reason", value=f"Abusive language detected", inline=False)
+                    dm_embed.add_field(name="Detected Content", 
+                                     value=advanced_analysis['category'].upper(), inline=False)
+                    dm_embed.add_field(name="Severity", 
+                                     value=self.content_detector.get_severity_level(advanced_analysis['severity']), 
+                                     inline=False)
                     dm_embed.add_field(name="Warnings", value=f"{warning_count}/5", inline=False)
                     if warning_count >= 5:
-                        dm_embed.add_field(name="Action", value="Timed out for 10 minutes", inline=False)
+                        dm_embed.add_field(name="Action Taken", value="🔇 Muted for 10 minutes", inline=False)
+                    dm_embed.add_field(name="Appeal", value="Contact server moderators if you believe this is an error.", inline=False)
                     await message.author.send(embed=dm_embed)
                 except:
                     pass  # User has DMs disabled
                     
             except discord.Forbidden:
-                print(f"[ERROR] Cannot delete message or timeout user - missing permissions")
+                print(f"[ERROR] Cannot delete message - missing permissions")
             except Exception as e:
                 print(f"[ERROR] Auto-mod failed: {e}")
         
         # Process commands
         await self.process_commands(message)
+    
+    async def _assign_mute_role(self, guild: discord.Guild, member: discord.Member, guild_id: str):
+        """Assign mute role to a user"""
+        try:
+            mute_role_id = self.mute_role_manager.get_mute_role(guild_id)
+            
+            if not mute_role_id:
+                # Try to create or find mute role
+                mute_role = discord.utils.find(lambda r: r.name.lower() == "muted", guild.roles)
+                
+                if not mute_role:
+                    # Create mute role
+                    mute_role = await guild.create_role(
+                        name="Muted",
+                        color=discord.Color.from_rgb(128, 128, 128),
+                        reason="Auto-mod: Mute role for warnings"
+                    )
+                    
+                    # Restrict permissions on mute role in all channels
+                    for channel in guild.channels:
+                        try:
+                            await channel.set_permissions(
+                                mute_role,
+                                send_messages=False,
+                                speak=False,
+                                reason="Mute role permissions"
+                            )
+                        except:
+                            pass
+                
+                # Save mute role
+                self.mute_role_manager.set_mute_role(guild_id, str(mute_role.id))
+            else:
+                mute_role = guild.get_role(int(mute_role_id))
+            
+            if mute_role:
+                await member.add_roles(mute_role, reason="Auto-mod: Warning threshold reached")
+                self.warning_manager.mark_mute_role_assigned(str(member.id), guild_id)
+                print(f"[MUTE ROLE] Assigned mute role to {member} in {guild.name}")
+        except Exception as e:
+            print(f"[ERROR] Failed to assign mute role: {e}")
+    
+    async def _schedule_unmute(self, guild: discord.Guild, member: discord.Member, 
+                              guild_id: str, minutes: int):
+        """Schedule automatic unmute for a user"""
+        try:
+            mute_key = f"{guild_id}:{member.id}"
+            
+            # Cancel existing unmute task if any
+            if mute_key in self.unmute_tasks:
+                self.unmute_tasks[mute_key].cancel()
+            
+            async def unmute_user():
+                try:
+                    # Wait for the specified duration
+                    await asyncio.sleep(minutes * 60)
+                    
+                    # Remove timeout
+                    try:
+                        await member.timeout(None, reason="Auto-unmute: Warning timeout expired")
+                    except:
+                        pass
+                    
+                    # Remove mute role
+                    try:
+                        mute_role_id = self.mute_role_manager.get_mute_role(guild_id)
+                        if mute_role_id:
+                            mute_role = guild.get_role(int(mute_role_id))
+                            if mute_role and mute_role in member.roles:
+                                await member.remove_roles(mute_role, reason="Auto-unmute: Warning timeout expired")
+                    except:
+                        pass
+                    
+                    # Update mute record
+                    self.warning_manager.end_mute(str(member.id), guild_id)
+                    
+                    print(f"[AUTO-UNMUTE] {member} has been unmuted in {guild.name}")
+                    
+                except asyncio.CancelledError:
+                    print(f"[INFO] Unmute task for {member} was cancelled")
+                except Exception as e:
+                    print(f"[ERROR] Unmute task failed for {member}: {e}")
+            
+            # Create and store the task
+            task = asyncio.create_task(unmute_user())
+            self.unmute_tasks[mute_key] = task
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to schedule unmute: {e}")
+
+
 
 
 # Setup bot with intents
@@ -869,6 +1006,247 @@ async def statistics(ctx):
     )
     
     await ctx.send(embed=embed)
+
+
+# ==================== ENHANCED WARNING SYSTEM COMMANDS ====================
+
+@bot.command(name='warnings')
+@commands.has_permissions(manage_messages=True)
+async def check_warnings(ctx, member: discord.Member):
+    """
+    Check warnings for a user in this server.
+    Usage: !warnings @user
+    """
+    guild_id = str(ctx.guild.id)
+    user_id = str(member.id)
+    warning_count = bot.warning_manager.get_warning_count(user_id, guild_id)
+    warnings_list = bot.warning_manager.get_warnings(user_id, guild_id, limit=10)
+    
+    embed = discord.Embed(
+        title=f"⚠️ Warnings for {member.name}",
+        description=f"Total warnings: **{warning_count}/5**",
+        color=discord.Color.orange() if warning_count > 0 else discord.Color.green()
+    )
+    
+    if warnings_list:
+        for warning in warnings_list:
+            warning_date = warning.get('timestamp', 'Unknown')[:10]
+            embed.add_field(
+                name=f"Warning #{warning.get('id', '?')}",
+                value=f"**Reason:** {warning.get('reason', 'N/A')}\n"
+                      f"**Severity:** {warning.get('severity', 'N/A')}\n"
+                      f"**Date:** {warning_date}",
+                inline=False
+            )
+    else:
+        embed.description = "No warnings recorded for this user. ✅"
+    
+    # Check mute status
+    mute = bot.warning_manager.get_mute(user_id, guild_id)
+    if mute and mute.get('is_active'):
+        end_time = mute.get('end_time', 'Unknown')[:16]
+        embed.add_field(name="🔇 Mute Status", 
+                       value=f"**Muted until:** {end_time}\n**Reason:** {mute.get('reason', 'N/A')}", 
+                       inline=False)
+    
+    await ctx.send(embed=embed)
+
+
+@bot.command(name='warn')
+@commands.has_permissions(manage_messages=True)
+async def manual_warn(ctx, member: discord.Member, *, reason: str = "No reason provided"):
+    """
+    Manually add a warning to a user.
+    Usage: !warn @user [reason]
+    """
+    guild_id = str(ctx.guild.id)
+    user_id = str(member.id)
+    
+    warning_count = bot.warning_manager.add_warning(
+        user_id=user_id,
+        guild_id=guild_id,
+        reason=reason,
+        severity="medium",
+        content=""
+    )
+    
+    embed = discord.Embed(
+        title="⚠️ Manual Warning Added",
+        description=f"{member.mention} has been warned.",
+        color=discord.Color.orange()
+    )
+    embed.add_field(name="Reason", value=reason, inline=False)
+    embed.add_field(name="Total Warnings", value=f"{warning_count}/5", inline=True)
+    embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
+    
+    # Check if auto-mute threshold reached
+    if warning_count >= 5:
+        embed.color = discord.Color.red()
+        embed.add_field(name="Action", value="🔇 User has reached mute threshold (5 warnings)", inline=False)
+    
+    await ctx.send(embed=embed)
+    print(f"[MANUAL WARNING] {ctx.author} warned {member} in {ctx.guild.name}: {reason}")
+
+
+@bot.command(name='clearwarnings')
+@commands.has_permissions(administrator=True)
+async def clear_warnings(ctx, member: discord.Member):
+    """
+    Clear all warnings for a user in this server.
+    Usage: !clearwarnings @user
+    """
+    guild_id = str(ctx.guild.id)
+    user_id = str(member.id)
+    
+    cleared = bot.warning_manager.clear_warnings(user_id, guild_id)
+    
+    if cleared:
+        embed = discord.Embed(
+            title="✅ Warnings Cleared",
+            description=f"All warnings for {member.mention} have been cleared.",
+            color=discord.Color.green()
+        )
+        embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
+        await ctx.send(embed=embed)
+        print(f"[CLEAR WARNINGS] {ctx.author} cleared warnings for {member} in {ctx.guild.name}")
+    else:
+        await ctx.send(f"⚠️ No warnings found for {member.mention}")
+
+
+@bot.command(name='forcemute')
+@commands.has_permissions(moderate_members=True)
+async def force_mute(ctx, member: discord.Member, minutes: int = 10, *, reason: str = "No reason provided"):
+    """
+    Manually mute a user for specified minutes.
+    Usage: !forcemute @user [minutes] [reason]
+    """
+    guild_id = str(ctx.guild.id)
+    user_id = str(member.id)
+    
+    try:
+        # Create mute record
+        bot.warning_manager.create_mute(user_id, guild_id, duration_minutes=minutes, reason=reason)
+        
+        # Apply timeout
+        await member.timeout(timedelta(minutes=minutes), reason=f"{reason} | Muted by {ctx.author}")
+        
+        # Try to assign mute role
+        await bot._assign_mute_role(ctx.guild, member, guild_id)
+        
+        # Schedule unmute
+        await bot._schedule_unmute(ctx.guild, member, guild_id, minutes)
+        
+        embed = discord.Embed(
+            title="🔇 User Muted",
+            description=f"{member.mention} has been muted for {minutes} minutes.",
+            color=discord.Color.red()
+        )
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field(name="Duration", value=f"{minutes} minutes", inline=True)
+        embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
+        await ctx.send(embed=embed)
+        print(f"[FORCE MUTE] {ctx.author} muted {member} for {minutes}min in {ctx.guild.name}: {reason}")
+        
+    except discord.Forbidden:
+        await ctx.send("❌ I don't have permission to mute this member!")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='unmute')
+@commands.has_permissions(moderate_members=True)
+async def manual_unmute(ctx, member: discord.Member):
+    """
+    Manually unmute a user.
+    Usage: !unmute @user
+    """
+    guild_id = str(ctx.guild.id)
+    user_id = str(member.id)
+    
+    try:
+        # Remove timeout
+        await member.timeout(None, reason=f"Unmuted by {ctx.author}")
+        
+        # Remove mute role
+        mute_role_id = bot.mute_role_manager.get_mute_role(guild_id)
+        if mute_role_id:
+            mute_role = ctx.guild.get_role(int(mute_role_id))
+            if mute_role and mute_role in member.roles:
+                await member.remove_roles(mute_role, reason=f"Unmuted by {ctx.author}")
+        
+        # Update mute record
+        bot.warning_manager.end_mute(user_id, guild_id)
+        
+        embed = discord.Embed(
+            title="🔊 User Unmuted",
+            description=f"{member.mention} has been unmuted.",
+            color=discord.Color.green()
+        )
+        embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
+        await ctx.send(embed=embed)
+        print(f"[MANUAL UNMUTE] {ctx.author} unmuted {member} in {ctx.guild.name}")
+        
+    except discord.Forbidden:
+        await ctx.send("❌ I don't have permission to unmute this member!")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
+@bot.command(name='warningstats')
+@commands.has_permissions(manage_messages=True)
+async def warning_statistics(ctx):
+    """
+    View warning and mute statistics for this server.
+    Usage: !warningstats
+    """
+    guild_id = str(ctx.guild.id)
+    stats = bot.warning_manager.get_statistics(guild_id)
+    
+    embed = discord.Embed(
+        title="⚠️ Warning System Statistics",
+        description=f"Statistics for **{ctx.guild.name}**",
+        color=discord.Color.blue()
+    )
+    
+    embed.add_field(name="Total Users Warned", value=str(stats.get('total_users_warned', 0)), inline=True)
+    embed.add_field(name="Total Warnings Issued", value=str(stats.get('total_warnings', 0)), inline=True)
+    embed.add_field(name="Active Mutes", value=str(stats.get('total_active_mutes', 0)), inline=True)
+    
+    severity = stats.get('severity_breakdown', {})
+    embed.add_field(
+        name="Warning Severity Breakdown",
+        value=f"🔴 CRITICAL: {severity.get('CRITICAL', 0)}\n"
+              f"🟠 HIGH: {severity.get('HIGH', 0)}\n"
+              f"🟡 MEDIUM: {severity.get('MEDIUM', 0)}\n"
+              f"🟢 LOW: {severity.get('LOW', 0)}",
+        inline=False
+    )
+    
+    await ctx.send(embed=embed)
+
+
+@bot.command(name='setmuterole')
+@commands.has_permissions(administrator=True)
+async def set_mute_role(ctx, role: discord.Role):
+    """
+    Set the mute role for this server.
+    Usage: !setmuterole @role
+    
+    This role will be assigned to muted users.
+    """
+    guild_id = str(ctx.guild.id)
+    bot.mute_role_manager.set_mute_role(guild_id, str(role.id))
+    
+    embed = discord.Embed(
+        title="✅ Mute Role Set",
+        description=f"Mute role set to {role.mention}",
+        color=discord.Color.green()
+    )
+    await ctx.send(embed=embed)
+    print(f"[MUTE ROLE] {ctx.author} set mute role to {role.name} in {ctx.guild.name}")
+
+
+# ==================== END WARNING SYSTEM COMMANDS ====================
 
 
 @bot.command(name='kick')
