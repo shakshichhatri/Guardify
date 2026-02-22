@@ -19,6 +19,7 @@ import asyncio
 # Import new content detection and warning systems
 from content_detector import get_content_detector
 from warning_system import get_warning_manager, get_mute_role_manager
+from channel_logger import get_channel_logger
 
 
 class AbuseDetector:
@@ -311,6 +312,7 @@ class RespectRanger(commands.Bot):
         self.content_detector = get_content_detector()
         self.warning_manager = get_warning_manager()
         self.mute_role_manager = get_mute_role_manager()
+        self.channel_logger = get_channel_logger()
         
         # Auto-mod settings
         self.spam_threshold = 5  # messages per 10 seconds
@@ -780,10 +782,18 @@ class RespectRanger(commands.Bot):
                                   value=f"You will be muted after {remaining} more warning(s)", 
                                   inline=False)
                 
-                # Send warning message in channel (auto-delete after 15 seconds)
+                # Send warning message in channel (KEEP MESSAGE - don't delete)
                 try:
                     warning_msg = await message.channel.send(embed=embed)
-                    await warning_msg.delete(delay=15)
+                    # Log to dedicated channel
+                    severity_level = self.content_detector.get_severity_level(advanced_analysis['severity'])
+                    await self.channel_logger.log_warning(
+                        message.guild,
+                        message.author,
+                        warning_count,
+                        f"{advanced_analysis['category'].upper()}: {', '.join(advanced_analysis['detected_content'][:2])}",
+                        severity_level
+                    )
                 except discord.Forbidden:
                     print(f"[ERROR] Cannot send warning message - missing permissions")
                 
@@ -1085,6 +1095,16 @@ async def manual_warn(ctx, member: discord.Member, *, reason: str = "No reason p
         embed.add_field(name="Action", value="🔇 User has reached mute threshold (5 warnings)", inline=False)
     
     await ctx.send(embed=embed)
+    
+    # Log to channel logger
+    await bot.channel_logger.log_warning(
+        ctx.guild,
+        member,
+        warning_count,
+        reason,
+        "MEDIUM"
+    )
+    
     print(f"[MANUAL WARNING] {ctx.author} warned {member} in {ctx.guild.name}: {reason}")
 
 
@@ -1108,6 +1128,10 @@ async def clear_warnings(ctx, member: discord.Member):
         )
         embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
         await ctx.send(embed=embed)
+        
+        # Log to channel logger
+        await bot.channel_logger.log_clearwarnings(ctx.guild, member, ctx.author)
+        
         print(f"[CLEAR WARNINGS] {ctx.author} cleared warnings for {member} in {ctx.guild.name}")
     else:
         await ctx.send(f"⚠️ No warnings found for {member.mention}")
@@ -1145,6 +1169,10 @@ async def force_mute(ctx, member: discord.Member, minutes: int = 10, *, reason: 
         embed.add_field(name="Duration", value=f"{minutes} minutes", inline=True)
         embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
         await ctx.send(embed=embed)
+        
+        # Log to channel logger
+        await bot.channel_logger.log_mute(ctx.guild, member, minutes, reason)
+        
         print(f"[FORCE MUTE] {ctx.author} muted {member} for {minutes}min in {ctx.guild.name}: {reason}")
         
     except discord.Forbidden:
@@ -1184,6 +1212,10 @@ async def manual_unmute(ctx, member: discord.Member):
         )
         embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
         await ctx.send(embed=embed)
+        
+        # Log to channel logger
+        await bot.channel_logger.log_unmute(ctx.guild, member)
+        
         print(f"[MANUAL UNMUTE] {ctx.author} unmuted {member} in {ctx.guild.name}")
         
     except discord.Forbidden:
@@ -1246,7 +1278,96 @@ async def set_mute_role(ctx, role: discord.Role):
     print(f"[MUTE ROLE] {ctx.author} set mute role to {role.name} in {ctx.guild.name}")
 
 
-# ==================== END WARNING SYSTEM COMMANDS ====================
+# ==================== LOGGING CHANNEL COMMANDS ====================
+
+@bot.command(name='setlogchannel')
+@commands.has_permissions(administrator=True)
+async def set_log_channel(ctx, channel: discord.TextChannel = None):
+    """
+    Set the logging channel for bot activities.
+    Usage: !setlogchannel #channel or !setlogchannel (for current channel)
+    
+    All bot actions (warnings, mutes, detections) will be logged here.
+    """
+    if channel is None:
+        channel = ctx.channel
+    
+    guild_id = str(ctx.guild.id)
+    bot.channel_logger.set_log_channel(guild_id, str(channel.id))
+    
+    embed = discord.Embed(
+        title="✅ Log Channel Set",
+        description=f"Logging channel set to {channel.mention}",
+        color=discord.Color.green()
+    )
+    embed.add_field(name="📝 Note", 
+                   value="All bot activities will now be logged to this channel.\n"
+                         "Warning and detection messages will NOT be automatically deleted.",
+                   inline=False)
+    await ctx.send(embed=embed)
+    
+    # Test the logging
+    await bot.channel_logger.log_system_event(
+        ctx.guild,
+        "Logging Enabled",
+        f"Logging channel has been set to {channel.mention}",
+        {"Set By": f"{ctx.author.mention}"}
+    )
+    print(f"[LOGGING] Log channel set to {channel.name} in {ctx.guild.name}")
+
+
+@bot.command(name='disablelogging')
+@commands.has_permissions(administrator=True)
+async def disable_logging(ctx):
+    """
+    Disable logging for this server.
+    Usage: !disablelogging
+    """
+    guild_id = str(ctx.guild.id)
+    bot.channel_logger.disable_logging(guild_id)
+    
+    embed = discord.Embed(
+        title="⚠️ Logging Disabled",
+        description="Logging has been disabled for this server.",
+        color=discord.Color.orange()
+    )
+    await ctx.send(embed=embed)
+    print(f"[LOGGING] Logging disabled in {ctx.guild.name}")
+
+
+@bot.command(name='enablelogging')
+@commands.has_permissions(administrator=True)
+async def enable_logging(ctx):
+    """
+    Enable logging for this server.
+    Usage: !enablelogging
+    """
+    guild_id = str(ctx.guild.id)
+    
+    if bot.channel_logger.get_log_channel_id(guild_id) is None:
+        await ctx.send("❌ Please set a log channel first using `!setlogchannel #channel`")
+        return
+    
+    bot.channel_logger.enable_logging(guild_id)
+    
+    embed = discord.Embed(
+        title="✅ Logging Enabled",
+        description="Logging has been enabled for this server.",
+        color=discord.Color.green()
+    )
+    await ctx.send(embed=embed)
+    
+    # Test the logging
+    await bot.channel_logger.log_system_event(
+        ctx.guild,
+        "Logging Enabled",
+        "Logging has been re-enabled for this server.",
+        {"Enabled By": f"{ctx.author.mention}"}
+    )
+    print(f"[LOGGING] Logging enabled in {ctx.guild.name}")
+
+
+# ==================== END LOGGING COMMANDS ====================
 
 
 @bot.command(name='kick')
@@ -1381,65 +1502,6 @@ async def untimeout(ctx, member: discord.Member):
         await ctx.send(f"❌ Error: {str(e)}")
 
 
-@bot.command(name='warn')
-@commands.has_permissions(manage_messages=True)
-async def warn(ctx, member: discord.Member, *, reason: str = "No reason provided"):
-    """
-    Warn a member.
-    Usage: !warn @user [reason]
-    """
-    warnings_file = os.path.join(bot.forensics_logger.log_dir, "warnings.json")
-    
-    # Load existing warnings
-    warnings = {}
-    if os.path.exists(warnings_file):
-        with open(warnings_file, 'r') as f:
-            warnings = json.load(f)
-    
-    # Add warning
-    user_id = str(member.id)
-    if user_id not in warnings:
-        warnings[user_id] = []
-    
-    warnings[user_id].append({
-        "warned_by": str(ctx.author.id),
-        "warned_by_name": str(ctx.author),
-        "reason": reason,
-        "timestamp": datetime.utcnow().isoformat()
-    })
-    
-    # Save warnings
-    with open(warnings_file, 'w') as f:
-        json.dump(warnings, f, indent=2)
-    
-    # Log the action
-    bot.forensics_logger.log_mod_action("warn", ctx.author, member, reason, str(ctx.guild.id))
-    print(f"[MOD ACTION] {ctx.author} warned {member} | Reason: {reason}")
-    
-    # Send warning message
-    embed = discord.Embed(
-        title="Member Warned",
-        description=f"{member.mention} has been warned.",
-        color=discord.Color.gold()
-    )
-    embed.add_field(name="Reason", value=reason, inline=False)
-    embed.add_field(name="Total Warnings", value=str(len(warnings[user_id])), inline=False)
-    embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
-    await ctx.send(embed=embed)
-    
-    # Try to DM the user
-    try:
-        dm_embed = discord.Embed(
-            title="⚠️ Warning",
-            description=f"You have been warned in {ctx.guild.name}",
-            color=discord.Color.gold()
-        )
-        dm_embed.add_field(name="Reason", value=reason, inline=False)
-        await member.send(embed=dm_embed)
-    except:
-        pass
-
-
 @bot.command(name='automod')
 @commands.has_permissions(administrator=True)
 async def automod_settings(ctx, setting: str = None, value: str = None):
@@ -1476,71 +1538,6 @@ async def automod_settings(ctx, setting: str = None, value: str = None):
                 await ctx.send("❌ Invalid value. Use a percentage (e.g., !automod caps_threshold 70)")
         else:
             await ctx.send("❌ Unknown setting. Available: spam_threshold, caps_threshold")
-
-
-@bot.command(name='clearwarnings')
-@commands.has_permissions(administrator=True)
-async def clear_warnings(ctx, member: discord.Member):
-    """
-    Clear all warnings for a member.
-    Usage: !clearwarnings @user
-    """
-    warnings_file = os.path.join(bot.forensics_logger.log_dir, "warnings.json")
-    
-    if not os.path.exists(warnings_file):
-        await ctx.send(f"{member.mention} has no warnings to clear.")
-        return
-    
-    with open(warnings_file, 'r') as f:
-        warnings_data = json.load(f)
-    
-    user_id = str(member.id)
-    if user_id in warnings_data:
-        del warnings_data[user_id]
-        with open(warnings_file, 'w') as f:
-            json.dump(warnings_data, f, indent=2)
-        await ctx.send(f"✅ Cleared all warnings for {member.mention}")
-    else:
-        await ctx.send(f"{member.mention} has no warnings to clear.")
-
-
-@bot.command(name='warnings')
-@commands.has_permissions(manage_messages=True)
-async def warnings(ctx, member: discord.Member):
-    """
-    Check warnings for a member.
-    Usage: !warnings @user
-    """
-    warnings_file = os.path.join(bot.forensics_logger.log_dir, "warnings.json")
-    
-    if not os.path.exists(warnings_file):
-        await ctx.send(f"{member.mention} has no warnings.")
-        return
-    
-    with open(warnings_file, 'r') as f:
-        warnings_data = json.load(f)
-    
-    user_id = str(member.id)
-    user_warnings = warnings_data.get(user_id, [])
-    
-    if not user_warnings:
-        await ctx.send(f"{member.mention} has no warnings.")
-        return
-    
-    embed = discord.Embed(
-        title=f"Warnings for {member}",
-        description=f"Total warnings: {len(user_warnings)}",
-        color=discord.Color.gold()
-    )
-    
-    for i, warning in enumerate(user_warnings[-5:], 1):  # Show last 5
-        embed.add_field(
-            name=f"Warning #{i}",
-            value=f"**Reason:** {warning['reason']}\n**By:** {warning['warned_by_name']}\n**Date:** {warning['timestamp'][:10]}",
-            inline=False
-        )
-    
-    await ctx.send(embed=embed)
 
 
 @bot.command(name='clear')
@@ -1995,18 +1992,6 @@ async def mute_member(ctx, member: discord.Member, duration: int = None, *, reas
         print(f"[MOD ACTION] {ctx.author} muted {member} for {duration}min | Reason: {reason}")
     except discord.Forbidden:
         await ctx.send("❌ I don't have permission to mute this member!")
-    except Exception as e:
-        await ctx.send(f"❌ Error: {str(e)}")
-
-
-@bot.command(name='unmute')
-@commands.has_permissions(moderate_members=True)
-async def unmute_member(ctx, member: discord.Member):
-    """Unmute a member."""
-    try:
-        await member.timeout(None, reason=f"Unmuted by {ctx.author}")
-        embed = discord.Embed(title="🔊 Member Unmuted", description=f"{member.mention} can now speak again.", color=discord.Color.green())
-        await ctx.send(embed=embed)
     except Exception as e:
         await ctx.send(f"❌ Error: {str(e)}")
 

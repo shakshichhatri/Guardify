@@ -1,7 +1,7 @@
 """
 Advanced Content Detector - Multilingual Support (English & Hindi)
-Detects offensive slangs, hate speech, threats, and sensitive words
-Using AI extensions and multiple detection methods
+Enhanced with Fuzzy Matching, Visual Similarity, and AI-based Detection
+Detects offensive slangs, hate speech, threats, and sensitive words even with variations
 """
 
 import re
@@ -28,8 +28,367 @@ try:
 except ImportError:
     TEXTBLOB_AVAILABLE = False
 
+try:
+    from fuzzywuzzy import fuzz
+    from fuzzywuzzy import process
+    FUZZY_AVAILABLE = True
+except ImportError:
+    FUZZY_AVAILABLE = False
+
+try:
+    from rapidfuzz import fuzz as rapidfuzz_fuzz
+    RAPIDFUZZ_AVAILABLE = True
+except ImportError:
+    RAPIDFUZZ_AVAILABLE = False
+
+try:
+    from Levenshtein import distance as levenshtein_distance
+    LEVENSHTEIN_AVAILABLE = True
+except ImportError:
+    LEVENSHTEIN_AVAILABLE = False
+
 
 class HindiEnglishContentDetector:
+    """Advanced multilingual content detector with fuzzy matching and AI"""
+    
+    def __init__(self):
+        # Initialize better-profanity
+        if BETTER_PROFANITY_AVAILABLE:
+            profanity.load_censor_words()
+        
+        # Extended offensive word lists - ENGLISH with variations
+        self.offensive_keywords_en = {
+            # Hate speech & Discrimination
+            'hate', 'racist', 'racism', 'sexist', 'sexism', 'homophobic', 'transphobic',
+            'bigot', 'bigotry', 'supremacist', 'fascist', 'terrorist', 'terrorism',
+            'kill', 'kill all', 'massacre', 'genocide', 'ethnic cleansing',
+            
+            # Threats & Violence
+            'hurt', 'harm', 'attack', 'beat', 'punch', 'kick', 'stab', 'shoot', 'murder',
+            'suicide', 'kys', 'kms', 'hang', 'drink bleach', 'die', 'neck yourself', 
+            'rope yourself', 'end yourself', 'unalive yourself', 'get cancer', 'get aids',
+            'jump off', 'go die', 'kill yourself', 'delete yourself',
+            
+            # Severe insults & Derogatory terms
+            'gay', 'queer', 'tranny', 'trannies', 'dyke', 'chink', 'spic', 'wetback', 
+            'cracker', 'honky', 'gook', 'ape', 'monkey', 'rag head', 'towelhead',
+            
+            # Bullying Terms
+            'cancer', 'tumor', 'disease', 'waste of space', 'nobody likes you',
+            'everyone hates you', 'useless', 'failure', 'embarrassment', 'joke',
+            'clown', 'braindead', 'brainless', 'retard', 'retarded', 'moron',
+            'idiot', 'stupid', 'dumb', 'dumbass', 'dummy', 'loser', 'trash', 
+            'garbage', 'worthless', 'pathetic', 'disgusting',
+            
+            # Sexual harassment & Vulgar terms
+            'whore', 'slut', 'thot', 'hoe', 'prostitute', 'hooker', 'porn', 'rape',
+            'sexually assault', 'sexual harass', 'grope', 'molest',
+            
+            # Profanity (core words)
+            'fuck', 'shit', 'crap', 'damn', 'hell', 'bastard', 'bitch', 'ass',
+            'asshole', 'prick', 'dick', 'cock', 'pussy', 'cunt', 'twat',
+            'motherfucker', 'wtf', 'stfu', 'shut up',
+            
+            # Modern slang & internet slurs
+            'simp', 'incel', 'neckbeard', 'virgin', 'mayo', 'cringe',
+            'normie', 'weeb', 'pedo', 'degenerate', 'femoid', 'roastie',
+            
+            # Variants & Leetspeak (collected variations)
+            'fuk', 'fck', 'sh1t', 'b1tch', 'a$$', 'a55', 'fvck', 'phuck', 'shtty',
+            'suck', 'sucks', 'noob', 'n00b', 'scrub', 'bot', 'trash player',
+        }
+        
+        # Extended offensive word lists - HINDI
+        self.offensive_keywords_hi = {
+            # Gaali (Abusive words) - Hindi
+            'gaali', 'gali', 'besharam', 'badmash', 'nalayak', 'kamina', 'harami',
+            'pagal', 'budhu', 'bewakoof', 'murkh', 'chakku', 'chutiya', 'bhosdi',
+            'bc', 'bh*nchod', 'lund', 'lauda', 'jhant', 'randi', 'raandi', 'rand',
+            'kutia', 'kutiya', 'suar', 'soor', 'chakla', 'chakli', 'kutti',
+            
+            # Threats & Violence - Hindi
+            'mardunga', 'mar dunga', 'pitayi', 'chalbazo', 'chot parunga', 'maar',
+            'maar dunga', 'peetu', 'pakad le', 'aag lagadi', 'todo', 'toda', 'tordunga',
+            'tori', 'kaat', 'kaatdunga', 'stab', 'chhura', 'talvaar', 'banduk',
+            'goli', 'dhakka', 'ghusa', 'hatya', 'hatyakand',
+            
+            # Severe insults
+            'maachod', 'behya', 'apamaan', 'badnaam', 'sharam', 'lalach', 'ghatiya',
+            'nindya', 'ninda', 'beizzat', 'izzat', 'tuhmat', 'ilzaam', 'gunah',
+            
+            # Suicidal threats - Hindi
+            'sui kara', 'jaan de', 'mar ja', 'atmahatya', 'suicide', 'phansi',
+        }
+        
+        # Common visual/character variations (leetspeak, similar characters)
+        self.visual_similarity_map = {
+            'a': ['4', '@', '∆'],
+            'e': ['3', '€'],
+            'i': ['1', '!', '|'],
+            'o': ['0', '°'],
+            's': ['5', '$', '§'],
+            't': ['7', '+'],
+            'b': ['8', '6'],
+            'g': ['9', '6'],
+            'l': ['1', '|'],
+            'z': ['2'],
+        }
+        
+        # Threat patterns
+        self.threat_patterns = [
+            r'\b(i\'?ll|will|gonna|gon[na]+|imma|imma gonna)\s+(kill|hurt|harm|beat|punch|stab|shoot)\b',
+            r'\b(kill|hurt|harm|beat|punch|stab|shoot)\s+(yourself|yourself|urself|u|yourself)\b',
+            r'\b(go\s+)?die\b', 
+            r'\b(neck|rope|hang|drink\s+bleach|jump\s+off)\s+(yourself|urself)\b',
+            r'\bkys\b|\bkms\b',
+            r'\b(death\s+)?threat',
+            r'\b(commit|attempt|do)\s+(suicide|atmahatya)',
+            r'💀|☠️|🔪|🔫|⚰️',
+        ]
+        
+        # Hate speech patterns
+        self.hate_patterns = [
+            r'\b(f+[au]ck\s+)?all\s+\w+\b',
+            r'\b\w+s?\s+(are|r)\s+(trash|garbage|cancer|disease|subhuman|animals?|pigs?|rats?)\b',
+            r'\b(hate|despise|detest)\s+\w+(s?)\b',
+        ]
+        
+        # Severity weights
+        self.severity_weights = {
+            'threat_violence': 1.0,
+            'hate_speech': 0.9,
+            'discrimination': 0.85,
+            'harassment': 0.7,
+            'profanity': 0.4,
+            'slang_offensive': 0.5,
+        }
+    
+    def detect_language(self, text: str) -> str:
+        """Detect if text is in Hindi or English"""
+        if not LANGDETECT_AVAILABLE:
+            hindi_pattern = re.compile(r'[\u0900-\u097F]')
+            if hindi_pattern.search(text):
+                return 'hi'
+            return 'en'
+        
+        try:
+            lang = detect(text)
+            if lang in ['hi', 'en']:
+                return lang
+            hindi_pattern = re.compile(r'[\u0900-\u097F]')
+            if hindi_pattern.search(text):
+                return 'hi'
+            return 'en'
+        except LangDetectException:
+            return 'en'
+    
+    def fuzzy_match_word(self, word: str, keyword_list: set, threshold: int = 80) -> Tuple[bool, str]:
+        """Use fuzzy matching to find similar words"""
+        if not FUZZY_AVAILABLE:
+            return False, ""
+        
+        try:
+            # Use RapidFuzz if available (faster)
+            if RAPIDFUZZ_AVAILABLE:
+                matches = rapidfuzz_fuzz.extract(word, keyword_list, limit=1, score_cutoff=threshold/100)
+            else:
+                matches = process.extract(word, keyword_list, limit=1)
+            
+            if matches and matches[0][1] >= threshold:
+                return True, matches[0][0]
+        except Exception as e:
+            pass
+        
+        return False, ""
+    
+    def visual_similarity_check(self, word: str, keywords: set) -> Tuple[bool, str]:
+        """Check if word matches with visual/character similarities (leetspeak)"""
+        word_normalized = self._normalize_visual_variations(word)
+        
+        for keyword in keywords:
+            keyword_normalized = self._normalize_visual_variations(keyword)
+            if word_normalized == keyword_normalized:
+                return True, keyword
+        
+        return False, ""
+    
+    def _normalize_visual_variations(self, text: str) -> str:
+        """Normalize visual variations like leetspeak"""
+        text = text.lower()
+        
+        # Replace numbers/symbols with letters
+        replacements = {
+            '4': 'a', '@': 'a', '∆': 'a',
+            '3': 'e', '€': 'e',
+            '1': 'i', '!': 'i', '|': 'i',
+            '0': 'o', '°': 'o',
+            '5': 's', '$': 's', '§': 's',
+            '7': 't',
+            '8': 'b', '6': 'b',
+            '9': 'g',
+            '2': 'z',
+        }
+        
+        for char, replacement in replacements.items():
+            text = text.replace(char, replacement)
+        
+        # Remove common separators
+        text = re.sub(r'[-_*.]', '', text)
+        
+        return text
+    
+    def check_better_profanity(self, text: str) -> Tuple[bool, List[str]]:
+        """Use better-profanity library for detection"""
+        if not BETTER_PROFANITY_AVAILABLE:
+            return False, []
+        
+        try:
+            if profanity.contains_profanity(text):
+                detected = []
+                words = text.lower().split()
+                for word in words:
+                    if profanity.contains_profanity(word):
+                        detected.append(word.strip('.,!?;:'))
+                return True, detected[:5]
+        except Exception as e:
+            print(f"[ERROR] Better profanity check failed: {e}")
+        
+        return False, []
+    
+    def check_keyword_match(self, text: str, lang: str) -> Tuple[bool, List[str], str]:
+        """Check for keyword matches with fuzzy matching and visual similarity"""
+        text_lower = text.lower()
+        keywords = self.offensive_keywords_hi if lang == 'hi' else self.offensive_keywords_en
+        
+        detected = []
+        category = 'profanity'
+        matched_keywords = set()
+        
+        # Exact word boundary matching
+        for keyword in keywords:
+            pattern = r'\b' + re.escape(keyword) + r'\b'
+            if re.search(pattern, text_lower):
+                detected.append(keyword)
+                matched_keywords.add(keyword)
+        
+        # Fuzzy matching for similar words
+        if FUZZY_AVAILABLE:
+            words = re.findall(r'\b\w+\b', text_lower)
+            for word in words:
+                found, match = self.fuzzy_match_word(word, keywords, threshold=85)
+                if found and match not in matched_keywords:
+                    detected.append(f"{word}(similar to {match})")
+                    matched_keywords.add(match)
+        
+        # Visual similarity check (leetspeak)
+        words = re.findall(r'\b[\w\d$@!*._-]+\b', text_lower)
+        for word in words:
+            found, match = self.visual_similarity_check(word, keywords)
+            if found and match not in matched_keywords:
+                detected.append(f"{word}(visual: {match})")
+                matched_keywords.add(match)
+        
+        # Determine category
+        threat_keywords = {'kill', 'harm', 'hurt', 'attack', 'suicide', 'kys', 'die'}
+        hate_keywords = {'racist', 'racism', 'hate', 'bigot', 'supremacist'}
+        
+        for k in matched_keywords:
+            if any(tk in k.lower() for tk in threat_keywords):
+                category = 'threat_violence'
+                break
+            elif any(hk in k.lower() for hk in hate_keywords):
+                category = 'hate_speech'
+        
+        return len(detected) > 0, detected[:5], category
+    
+    def check_pattern_match(self, text: str) -> Tuple[bool, List[str], str]:
+        """Check for dangerous patterns"""
+        text_lower = text.lower()
+        detected_patterns = []
+        category = 'profanity'
+        
+        for pattern in self.threat_patterns:
+            if re.search(pattern, text_lower, re.IGNORECASE):
+                detected_patterns.append('Threat/violence detected')
+                category = 'threat_violence'
+                break
+        
+        if category != 'threat_violence':
+            for pattern in self.hate_patterns:
+                if re.search(pattern, text_lower, re.IGNORECASE):
+                    detected_patterns.append('Hate speech pattern')
+                    category = 'hate_speech'
+                    break
+        
+        return len(detected_patterns) > 0, detected_patterns, category
+    
+    def analyze_content(self, text: str) -> Dict:
+        """Comprehensive content analysis with multiple detection methods"""
+        detected_lang = self.detect_language(text)
+        
+        # Method 1: Better Profanity
+        profanity_detected, profanity_words = self.check_better_profanity(text)
+        
+        # Method 2: Keyword matching with fuzzy + visual
+        keyword_detected, keyword_matches, keyword_category = self.check_keyword_match(text, detected_lang)
+        
+        # Method 3: Pattern matching
+        pattern_detected, pattern_matches, pattern_category = self.check_pattern_match(text)
+        
+        is_offensive = profanity_detected or keyword_detected or pattern_detected
+        category = 'clean'
+        severity_score = 0.0
+        
+        if pattern_detected:
+            category = pattern_category
+            severity_score = self.severity_weights.get(category, 0.5)
+        elif keyword_detected:
+            category = keyword_category
+            severity_score = self.severity_weights.get(category, 0.5)
+        elif profanity_detected:
+            category = 'profanity'
+            severity_score = 0.4
+        
+        all_detected = list(set(profanity_words + keyword_matches + pattern_matches))
+        
+        return {
+            "is_offensive": is_offensive,
+            "severity": severity_score,
+            "category": category,
+            "language": detected_lang,
+            "detected_content": all_detected[:5],
+            "profanity_words": profanity_words[:3],
+            "fuzzy_matches": [m for m in all_detected if 'similar' in str(m)],
+            "visual_variations": [m for m in all_detected if 'visual' in str(m)],
+            "pattern_matches": pattern_matches,
+            "timestamp": datetime.utcnow().isoformat(),
+            "confidence": min(0.95, (len(all_detected) / 5) * 0.95),
+        }
+    
+    def get_severity_level(self, severity_score: float) -> str:
+        """Convert severity score to level"""
+        if severity_score >= 0.85:
+            return "CRITICAL"
+        elif severity_score >= 0.7:
+            return "HIGH"
+        elif severity_score >= 0.5:
+            return "MEDIUM"
+        elif severity_score >= 0.3:
+            return "LOW"
+        else:
+            return "MINIMAL"
+
+
+# Singleton instance
+_detector_instance = None
+
+def get_content_detector() -> HindiEnglishContentDetector:
+    """Get or create singleton instance"""
+    global _detector_instance
+    if _detector_instance is None:
+        _detector_instance = HindiEnglishContentDetector()
+    return _detector_instance
+
     """Advanced multilingual content detector for English and Hindi"""
     
     def __init__(self):
